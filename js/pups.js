@@ -182,11 +182,11 @@ export function pupSvg(spec, opts = {}) {
   }
   // sitting body: tail, body, paws, then the face on top
   return `<svg class="pup pup-body ${opts.cls || ''}" data-mood="${mood}" viewBox="0 -10 120 160" xmlns="http://www.w3.org/2000/svg" aria-label="${esc(spec.name)}" role="img">
-    <g class="pup-tail"><path d="M92 112 q20 -4 16 -30" stroke="${spec.fur}" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M92 112 q20 -4 16 -30" stroke="${spec.muzzle}" stroke-width="3" fill="none" stroke-linecap="round" opacity=".5"/></g>
-    <ellipse cx="60" cy="118" rx="32" ry="24" fill="${spec.fur}"/>
-    <ellipse cx="60" cy="124" rx="18" ry="14" fill="${spec.muzzle}" opacity=".9"/>
-    <g class="pup-paws" fill="${spec.fur}"><ellipse cx="42" cy="140" rx="10" ry="6"/><ellipse cx="78" cy="140" rx="10" ry="6"/></g>
-    <g class="pup-toes" fill="${spec.nose}" opacity=".35"><circle cx="38" cy="141" r="1.6"/><circle cx="43" cy="142" r="1.6"/><circle cx="48" cy="141" r="1.6"/><circle cx="72" cy="141" r="1.6"/><circle cx="77" cy="142" r="1.6"/><circle cx="82" cy="141" r="1.6"/></g>
+    <g class="pup-tail"><path d="M94 108 q20 -4 16 -30" stroke="${spec.fur}" stroke-width="9" fill="none" stroke-linecap="round"/><path d="M94 108 q20 -4 16 -30" stroke="${spec.muzzle}" stroke-width="3" fill="none" stroke-linecap="round" opacity=".5"/></g>
+    <ellipse cx="60" cy="112" rx="36" ry="28" fill="${spec.fur}"/>
+    <ellipse cx="60" cy="121" rx="20" ry="15" fill="${spec.muzzle}" opacity=".9"/>
+    <g class="pup-paws" fill="${spec.fur}"><ellipse cx="40" cy="139" rx="11" ry="6.5"/><ellipse cx="80" cy="139" rx="11" ry="6.5"/></g>
+    <g class="pup-toes" fill="${spec.nose}" opacity=".35"><circle cx="35" cy="140" r="1.6"/><circle cx="40" cy="141" r="1.6"/><circle cx="45" cy="140" r="1.6"/><circle cx="75" cy="140" r="1.6"/><circle cx="80" cy="141" r="1.6"/><circle cx="85" cy="140" r="1.6"/></g>
     <g class="pup-face" transform="translate(10 0) scale(1)">${face}</g>
   </svg>`;
 }
