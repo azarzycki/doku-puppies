@@ -1,18 +1,20 @@
 plugins { id 'com.android.application' }
 
 android {
-    namespace 'ca.zarzycki.pupdoku'
-    compileSdk 34
+    namespace 'ca.zarzycki.dokupuppies'
+    compileSdk 36
     defaultConfig {
-        applicationId 'ca.zarzycki.pupdoku'
+        applicationId 'ca.zarzycki.dokupuppies'
         minSdk 21
-        targetSdk 34
+        targetSdk 36   // Google Play requires new apps to target Android 16 (API 36)
         versionCode 1
         versionName '1.0'
     }
     signingConfigs {
         release {
             // Self-signed key committed to the repo so every build installs over the previous one.
+            // (The keystore predates the rename, hence the old alias/passwords. For a Play Store upload
+            // key, generate a private keystore and keep it in a GitHub secret instead.)
             storeFile file('release.keystore')
             storePassword 'pupdoku'
             keyAlias 'pupdoku'

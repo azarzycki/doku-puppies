@@ -37,7 +37,7 @@
       }
     },
 
-    "pupdoku": {
+    "dokupuppies": {
       "profiles": {
         "$key": {
           ".read": "$key.matches(/^[a-f0-9]{32}$/)",

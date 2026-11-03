@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android app
 
 on:
   push:
@@ -16,23 +16,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: '17' }
-      - name: Install SDK platform 34 (runner ships the SDK and sdkmanager)
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.14.3' }
+      - name: Install SDK platform 36 (runner ships the SDK and sdkmanager)
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
-      - name: Build release APK
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Build release APK (sideloading) and AAB (Google Play upload)
         working-directory: android
-        run: gradle --no-daemon assembleRelease
+        run: gradle --no-daemon assembleRelease bundleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: pupdoku-apk
-          path: android/app/build/outputs/apk/release/app-release.apk
+          name: doku-puppies-android
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
       - name: Publish as "latest" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
-          name: Pupdoku Android app (latest build)
-          files: android/app/build/outputs/apk/release/app-release.apk
+          name: Doku Puppies Android app (latest build)
+          files: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
           body: |
             Phones and tablets: open this page on the device and install the APK (allow installs from your browser when asked).
             Android TV / Google TV: sideload with Downloader by AFTVnews or `adb install`.
+            `app-release.aab` is the bundle to upload to Google Play (see store/listing.md).

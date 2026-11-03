@@ -1,9 +1,9 @@
-# Pupdoku 🐾
+# Doku Puppies 🐾
 
 A puppy-themed take on the "one per row, column and region" logic puzzle (the mechanism behind Meowdoku / Queens / Star Battle), served from GitHub Pages and wrapped in a small Android app.
 
-- **Play in a browser:** https://azarzycki.github.io/pupdoku/
-- **Android app (APK):** https://azarzycki.github.io/pupdoku/apk/ → redirects to the latest release
+- **Play in a browser:** https://azarzycki.github.io/doku-puppies/
+- **Android app (APK):** https://azarzycki.github.io/doku-puppies/apk/ → redirects to the latest release
 - Sister project: [tv-trivia](https://github.com/azarzycki/tv-trivia) (same hosting + Firebase pattern)
 
 ## The game
@@ -45,10 +45,12 @@ js/gen-worker.js      runtime generation off the main thread
 data/levels.json      the 160 campaign levels      (generated: node tools/build-levels.js campaign)
 data/bank.json        free-play puzzles by size+rank (generated: node tools/build-levels.js bank)
 data/daily.json       daily boards 2026-11 → 2027-12 (generated: node tools/build-levels.js daily; extend the end date in the script and re-run to add more — dates past the table are generated on the device, same board for everyone)
-tools/                generator CLI, engine stats, data verifier
+tools/                generator CLI, engine stats, data verifier, UI smoke test, icon + screenshot makers
+privacy.html          privacy policy linked from the store listing
 android/              WebView wrapper (phones, tablets, Android/Google TV)
 apk/                  /apk short link → latest release APK
-database.rules.json   Firebase Realtime Database rules (rooms = trivia buzzers, pupdoku = this game)
+store/                App Store / Google Play listing copy
+database.rules.json   Firebase Realtime Database rules (rooms = trivia buzzers, dokupuppies = this game)
 ```
 
 No build step: it is a static site. `python3 -m http.server` in the repo root and open http://localhost:8000/.
@@ -63,14 +65,21 @@ No build step: it is a static site. `python3 -m http.server` in the repo root an
 
 `node tools/build-levels.js campaign|bank|daily|all` pre-generates with a worker pool (resumable; output in `tools/out/*.jsonl`, compiled into `data/`). `node tools/verify-data.js` re-checks every shipped puzzle: well formed, unique, graded rank matches, and solvable end-to-end with hints only.
 
+Other checks and tools (all need Playwright with Chromium: `npm i -g playwright && npx playwright install chromium`):
+
+- `node tools/test-ui.js` — end-to-end smoke test in headless Chromium (phone, tablet, TV keyboard) against a local server.
+- `node tools/test-hints.js` — fuzzes Sniff from random partial boards (must never get stuck).
+- `node tools/make-icons.js` — regenerates every PNG icon, the Android TV banner and the Play feature graphic from `icons/icon.svg`.
+- `node tools/screenshots.js` — store screenshots into `store/screenshots/` (phone, 7" and 10" tablets, TV).
+
 ## Firebase
 
-Same project as tv-trivia (`to-trivia`, Realtime Database, free plan). Pupdoku keeps its data under `pupdoku/`:
+Same project as tv-trivia (`to-trivia`, Realtime Database, free plan). Doku Puppies keeps its data under `dokupuppies/`:
 
-- `pupdoku/profiles/<key>` — one profile per kennel; the key is a random 128-bit id kept in the device's localStorage.
-- `pupdoku/links/<CODE>` — six-letter pairing codes, valid ten minutes.
+- `dokupuppies/profiles/<key>` — one profile per kennel; the key is a random 128-bit id kept in the device's localStorage.
+- `dokupuppies/links/<CODE>` — six-letter pairing codes, valid ten minutes.
 
-**One-time setup:** publish `database.rules.json` in the Firebase console (Realtime Database → Rules). It contains both the trivia buzzer rules and the pupdoku rules. Until the rules are published the cloud sync shows as unavailable and the game simply keeps saving locally.
+**One-time setup:** publish `database.rules.json` in the Firebase console (Realtime Database → Rules). It contains both the trivia buzzer rules and the Doku Puppies rules. Until the rules are published the cloud sync shows as unavailable and the game simply keeps saving locally.
 
 Optional hardening: set `RECAPTCHA_SITE_KEY` in `js/store.js` to turn on App Check (same hook as tv-trivia).
 
@@ -78,9 +87,15 @@ Optional hardening: set `RECAPTCHA_SITE_KEY` in `js/store.js` to turn on App Che
 
 `android/` is a bare WebView shell pointing at the hosted page, so updates to the game never need a new APK. It is a normal launcher app (phones and tablets, any orientation) and also registers a Leanback entry so it shows up on Android TV / Google TV, where the page is fully playable with the remote's D-pad. The Back key closes dialogs / goes back a screen before leaving the app.
 
-The `Build Android APK` workflow builds and signs it on every push that touches `android/` and attaches `app-release.apk` to the `latest` release. Build locally with `cd android && gradle assembleRelease` (Android SDK platform 34 + build-tools 34.0.0).
+The `Build Android app` workflow builds and signs it on every push that touches `android/` and attaches `app-release.apk` (sideloading) and `app-release.aab` (Google Play upload) to the `latest` release. Build locally with `cd android && gradle assembleRelease bundleRelease` (Android SDK platform 36 + build-tools 36.0.0, Gradle 8.14, JDK 17). It targets Android 16 (API 36), which Google Play requires for new apps, so it is drawn edge-to-edge (the activity pads the page out from under the system bars) and uses the predictive-back callback.
 
-Sideloading on a TV: enable *Unknown sources* for Downloader by AFTVnews, then fetch `https://github.com/azarzycki/pupdoku/releases/latest/download/app-release.apk`.
+The committed `release.keystore` is convenient for sideload builds but is public. For Google Play, generate a private upload keystore, keep it in a GitHub secret, and point `signingConfigs.release` at it before the first upload (Play App Signing then manages the final key).
+
+Sideloading on a TV: enable *Unknown sources* for Downloader by AFTVnews, then fetch `https://github.com/azarzycki/doku-puppies/releases/latest/download/app-release.apk`.
+
+## Store listing
+
+`store/listing.md` holds the App Store / Google Play copy (name **Doku Puppies**, subtitle, descriptions, keywords): free, no ads, no in-app purchases, works offline. Android package id `ca.zarzycki.dokupuppies`; bump `versionCode`/`versionName` in `android/app/build.gradle` for each store release. Screenshots live in `store/screenshots/` (regenerate with `node tools/screenshots.js`); the feature graphic is `store/feature-graphic.png`.
 
 ## Credits
 

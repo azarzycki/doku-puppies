@@ -1,6 +1,6 @@
 {
-  "name": "Pupdoku — puppy logic puzzle",
-  "short_name": "Pupdoku",
+  "name": "Doku Puppies — puppy logic puzzle",
+  "short_name": "Doku Puppies",
   "description": "Seat one pup in every row, column and yard — no touching! Hints that explain the next move, daily boards, treats and pups to adopt.",
   "start_url": "./",
   "scope": "./",

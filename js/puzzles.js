@@ -53,6 +53,7 @@ export async function getEndlessLevel(id) {
     const bank = await loadBank();
     res = pickFromBank(bank, n, rank, hashString('endless-' + id));
   }
+  // seed prefixes keep the historical 'pupdoku-' spelling: the shipped data files were generated from them
   if (!res) res = await generateAsync(n, rank, 'pupdoku-E' + id, n >= 10 ? 60000 : 20000);
   return { kind: 'level', id, key: 'L' + id, n: res.n, rank: res.rank, puzzle: res.puzzle, walk: null, boss: false, title: `Level ${id}`, subtitle: 'Endless Walkies' };
 }

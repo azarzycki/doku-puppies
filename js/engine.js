@@ -1,6 +1,6 @@
 /*
- * Pupdoku puzzle engine
- * ---------------------
+ * Doku Puppies puzzle engine
+ * --------------------------
  * Rules (same mechanism as Meowdoku / "Queens"):
  *   - the N×N board is split into N connected coloured regions ("yards")
  *   - place exactly one pup in every row, every column and every yard

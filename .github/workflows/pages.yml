@@ -1,9 +1,9 @@
-name: Deploy Pupdoku to GitHub Pages
+name: Deploy Doku Puppies to GitHub Pages
 
 on:
   push:
     branches: [main]
-    paths: ['index.html', 'css/**', 'js/**', 'data/**', 'icons/**', 'sw.js', 'manifest.webmanifest', 'apk/**', '.github/workflows/pages.yml']
+    paths: ['index.html', 'privacy.html', 'css/**', 'js/**', 'data/**', 'icons/**', 'sw.js', 'manifest.webmanifest', 'apk/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Stamp the service worker cache version with the commit
-        run: sed -i "s/const VERSION = 'pupdoku-v1';/const VERSION = 'pupdoku-${GITHUB_SHA::8}';/" sw.js
+        run: sed -i "s/const VERSION = 'dokupuppies-v1';/const VERSION = 'dokupuppies-${GITHUB_SHA::8}';/" sw.js
       - uses: actions/configure-pages@v5
         with: { enablement: true }
       - uses: actions/upload-pages-artifact@v3

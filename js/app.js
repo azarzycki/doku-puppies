@@ -1,5 +1,5 @@
 /*
- * Pupdoku — app shell: screens, navigation, progression, prizes, dialogs, D-pad support.
+ * Doku Puppies — app shell: screens, navigation, progression, prizes, dialogs, D-pad support.
  */
 import { Store, todayKey, nextDayKey } from './store.js';
 import { PUPS, PUP_BY_ID, EVENTS, activeEvent, eventKey, pupSvg, lockedPupSvg } from './pups.js';
@@ -600,7 +600,7 @@ class App {
       <div class="row-buttons"><button class="btn hidden" id="install-btn">Install app</button><a class="btn" href="apk/" target="_blank" rel="noopener">Android APK</a><button class="btn" data-go="help">How to play</button></div>
       <h3>Danger zone</h3>
       <div class="row-buttons"><button class="btn danger" id="reset-btn">Reset progress on this device</button></div>
-      <p class="muted small center">Pupdoku v1 · made with 🐾 · a puppy take on the "one per row, column and region" puzzle.</p>`;
+      <p class="muted small center">Doku Puppies v1 · made with 🐾 · a puppy take on the "one per row, column and region" puzzle.</p>`;
     for (const id of ['sound', 'haptics', 'autoMark', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); } });
     }
@@ -833,7 +833,7 @@ class App {
   hideHint() { $('#hint-bubble')?.classList.add('hidden'); }
 
   showTutorial() {
-    this.dialog({ title: 'Welcome to Pupdoku! 🐾', cls: 'tutorial',
+    this.dialog({ title: 'Welcome to Doku Puppies! 🐾', cls: 'tutorial',
       html: `<div class="tut"><div class="mascot-face">${pupSvg(this.selectedPup(), { mood: 'excited' })}</div>
         <p>Seat one pup in every <b>row</b>, every <b>column</b> and every coloured <b>yard</b>. Pups never touch — not even corners.</p>
         <p><b>Tap</b> a square to cross it off, <b>tap again</b> to seat a pup. One pup is already home to get you started.</p>
@@ -972,7 +972,7 @@ class App {
 // ---------------------------------------------------------------- boot
 
 const app = new App();
-window.pupdoku = app;
+window.dokuPuppies = app; // Android wrapper calls window.dokuPuppies.handleBack()
 loadLevels().then(d => { app.levelsCache = d; }).catch(() => {});
 app.init();
 

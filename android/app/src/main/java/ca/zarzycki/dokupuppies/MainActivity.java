@@ -1,14 +1,20 @@
-package ca.zarzycki.pupdoku;
+package ca.zarzycki.dokupuppies;
 
 import android.app.Activity;
+import android.graphics.Insets;
+import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.widget.FrameLayout;
+import android.window.OnBackInvokedDispatcher;
 
 /**
  * Full-screen WebView around the hosted game (GitHub Pages). The page itself ships the whole game,
@@ -55,7 +61,26 @@ public class MainActivity extends Activity {
             public void onPageFinished(WebView v, String u) { offline = false; }
         });
 
-        setContentView(web);
+        // Apps targeting Android 15+ are drawn edge-to-edge: keep the page out from under the status /
+        // navigation bars and display cutouts by padding a container (the gap shows the page colour).
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(0xFFFFF3E4);
+        root.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            root.setOnApplyWindowInsetsListener((v, insets) -> {
+                Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                v.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return WindowInsets.CONSUMED;
+            });
+        }
+        setContentView(root);
+
+        // Predictive back (Android 13+, on by default when targeting 16): the system no longer sends
+        // KEYCODE_BACK, it invokes this callback instead. Older devices and TV remotes use onKeyDown.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
+        }
+
         if (savedInstanceState != null) web.restoreState(savedInstanceState); else web.loadUrl(url);
     }
 
@@ -70,6 +95,15 @@ public class MainActivity extends Activity {
         web.loadDataWithBaseURL(null, html, "text/html", "utf-8", null);
     }
 
+    /** Let the page close a dialog or go back a screen first; leave the app only from the home screen. */
+    private void back() {
+        web.evaluateJavascript("(window.dokuPuppies && window.dokuPuppies.handleBack) ? String(window.dokuPuppies.handleBack()) : 'false'", value -> {
+            if (!"\"true\"".equals(value)) {
+                if (web.canGoBack() && !offline) web.goBack(); else finish();
+            }
+        });
+    }
+
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) && offline) {
@@ -77,12 +111,7 @@ public class MainActivity extends Activity {
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            // let the page close a dialog or go back a screen first; leave the app only from the home screen
-            web.evaluateJavascript("(window.pupdoku && window.pupdoku.handleBack) ? String(window.pupdoku.handleBack()) : 'false'", value -> {
-                if (!"\"true\"".equals(value)) {
-                    if (web.canGoBack() && !offline) web.goBack(); else finish();
-                }
-            });
+            back();
             return true;
         }
         return super.onKeyDown(keyCode, event);

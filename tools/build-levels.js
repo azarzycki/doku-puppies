@@ -61,6 +61,8 @@ export const DAILY_PLAN = { // JS getDay(): 0 = Sunday
 function deadlineFor(n) { return n <= 8 ? 8000 : n === 9 ? 20000 : n === 10 ? 40000 : n === 11 ? 70000 : 150000; }
 
 function jobsFor(kind) {
+  // Seeds keep the historical 'pupdoku-' prefix on purpose: the shipped data files (and the
+  // on-device daily/endless fallbacks in js/puzzles.js) were generated from them.
   const jobs = [];
   if (kind === 'campaign') {
     for (let L = 1; L <= 160; L++) {

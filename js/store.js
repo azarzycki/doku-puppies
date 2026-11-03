@@ -4,8 +4,8 @@
  * phone, a tablet and a TV through a short link code.
  *
  * Firebase layout (rules in database.rules.json):
- *   pupdoku/profiles/<key>   the whole profile, key = 128-bit random hex (unguessable)
- *   pupdoku/links/<CODE>     { key, exp }  six-character pairing codes, valid for ten minutes
+ *   dokupuppies/profiles/<key>   the whole profile, key = 128-bit random hex (unguessable)
+ *   dokupuppies/links/<CODE>     { key, exp }  six-character pairing codes, valid for ten minutes
  */
 
 export const FIREBASE_CONFIG = {
@@ -24,8 +24,8 @@ const FIREBASE_SCRIPTS = [
   'https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js',
 ];
 
-const LS_PROFILE = 'pupdoku.profile.v1';
-const LS_KEY = 'pupdoku.key';
+const LS_PROFILE = 'dokupuppies.profile.v1';
+const LS_KEY = 'dokupuppies.key';
 export const START_TREATS = 10;
 
 export function todayKey(d = new Date()) {
@@ -216,7 +216,7 @@ export class Store {
 
   async attach() {
     this.detachSync();
-    const ref = this.db.ref('pupdoku/profiles/' + this.key);
+    const ref = this.db.ref('dokupuppies/profiles/' + this.key);
     const snap = await ref.once('value');
     this.sync.ref = ref;
     const remote = snap.val();
@@ -262,25 +262,25 @@ export class Store {
     const a = new Uint8Array(6); crypto.getRandomValues(a);
     for (const b of a) code += alphabet[b % alphabet.length];
     await this.writeNow();
-    await this.db.ref('pupdoku/links/' + code).set({ key: this.key, exp: Date.now() + 10 * 60 * 1000 });
+    await this.db.ref('dokupuppies/links/' + code).set({ key: this.key, exp: Date.now() + 10 * 60 * 1000 });
     return code;
   }
   async redeemLinkCode(code) {
     if (!this.db) throw new Error('Sync is not connected');
     code = String(code || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (code.length !== 6) throw new Error('Codes are 6 characters');
-    const snap = await this.db.ref('pupdoku/links/' + code).once('value');
+    const snap = await this.db.ref('dokupuppies/links/' + code).once('value');
     const link = snap.val();
     if (!link || !link.key || !/^[a-f0-9]{32}$/.test(link.key)) throw new Error('That code was not found');
     if ((link.exp || 0) < Date.now()) throw new Error('That code has expired — make a new one');
     if (link.key === this.key) return 'same';
-    const remoteSnap = await this.db.ref('pupdoku/profiles/' + link.key).once('value');
+    const remoteSnap = await this.db.ref('dokupuppies/profiles/' + link.key).once('value');
     const remote = remoteSnap.val();
     const merged = remote ? mergeProfiles(this.profile, normalizeProfile(remote)) : this.profile;
     this.detachSync();
     this.key = link.key; localStorage.setItem(LS_KEY, this.key);
     this.profile = merged; this.profile.updatedAt = Date.now(); this.saveLocal();
-    try { await this.db.ref('pupdoku/links/' + code).remove(); } catch {}
+    try { await this.db.ref('dokupuppies/links/' + code).remove(); } catch {}
     await this.attach();
     this.emit('merged');
     return 'linked';
