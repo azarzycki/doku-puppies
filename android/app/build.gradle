@@ -10,15 +10,27 @@ android {
         versionCode 1
         versionName '1.0'
     }
+    // Google Play upload key: a private keystore named by UPLOAD_KEYSTORE (path), UPLOAD_KEYSTORE_PASSWORD,
+    // UPLOAD_KEY_ALIAS and UPLOAD_KEY_PASSWORD (env vars, or -P properties). The GitHub workflow restores it from
+    // repo secrets. Without them the build falls back to the committed self-signed key (fine for sideloading;
+    // Play rejects bundles signed with it).
+    def cfg = { String name -> project.findProperty(name) ?: System.getenv(name) }
+    def uploadStore = cfg('UPLOAD_KEYSTORE')
     signingConfigs {
         release {
-            // Self-signed key committed to the repo so every build installs over the previous one.
-            // (The keystore predates the rename, hence the old alias/passwords. For a Play Store upload
-            // key, generate a private keystore and keep it in a GitHub secret instead.)
-            storeFile file('release.keystore')
-            storePassword 'pupdoku'
-            keyAlias 'pupdoku'
-            keyPassword 'pupdoku'
+            if (uploadStore) {
+                storeFile file(uploadStore)
+                storePassword cfg('UPLOAD_KEYSTORE_PASSWORD')
+                keyAlias cfg('UPLOAD_KEY_ALIAS') ?: 'upload'
+                keyPassword cfg('UPLOAD_KEY_PASSWORD') ?: cfg('UPLOAD_KEYSTORE_PASSWORD')
+            } else {
+                // Self-signed key committed to the repo so every sideload build installs over the previous one.
+                // (The keystore predates the rename, hence the old alias/passwords.)
+                storeFile file('release.keystore')
+                storePassword 'pupdoku'
+                keyAlias 'pupdoku'
+                keyPassword 'pupdoku'
+            }
         }
     }
     buildTypes {
