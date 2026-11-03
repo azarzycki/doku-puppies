@@ -41,7 +41,7 @@ js/sound.js           synthesised sound effects
 js/gen-worker.js      runtime generation off the main thread
 data/levels.json      the 160 campaign levels      (generated: node tools/build-levels.js campaign)
 data/bank.json        free-play puzzles by size+rank (generated: node tools/build-levels.js bank)
-data/daily.json       daily boards 2026-11 → 2028-12 (generated: node tools/build-levels.js daily)
+data/daily.json       daily boards 2026-11 → 2027-12 (generated: node tools/build-levels.js daily; extend the end date in the script and re-run to add more — dates past the table are generated on the device, same board for everyone)
 tools/                generator CLI, engine stats, data verifier
 android/              WebView wrapper (phones, tablets, Android/Google TV)
 apk/                  /apk short link → latest release APK

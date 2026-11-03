@@ -202,6 +202,11 @@ export function explainStep(step, puzzle, colors) {
   const Unit = u => { const s = unit(u); return s[0].toUpperCase() + s.slice(1); };
   const w = step.why;
   const list = arr => arr.length <= 1 ? arr.join('') : arr.slice(0, -1).join(', ') + ' and ' + arr[arr.length - 1];
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+  // "rows 2, 3 and 4" / "columns 1 and 5" when all lines are the same kind
+  const linesText = lines => lines.every(l => l.type === lines[0].type) && lines.length > 1
+    ? `${lines[0].type === 'row' ? 'rows' : 'columns'} ${list(lines.map(l => String(l.idx + 1)))}` : list(lines.map(unit));
+  const yardsText = regs => regs.length > 1 ? `the ${list(regs.map(r => colors[r].name))} yards` : yard(regs[0]);
   switch (w.kind) {
     case 'badMark': return { title: 'Oops!', text: 'One of your ✕ marks sits right where a pup belongs. Let’s clear it.' };
     case 'basic': return { title: 'Personal space', text: `A pup blocks its whole row and column, its yard, and the 8 squares around it. ${w.count === 1 ? 'One square is' : w.count + ' squares are'} blocked by pups already sitting — cross ${w.count === 1 ? 'it' : 'them'} off.` };
@@ -211,8 +216,8 @@ export function explainStep(step, puzzle, colors) {
     case 'pointing': return { title: 'Yard lock', text: `Every open square of ${yard(w.reg)} lies in ${unit(w.line)}. That yard’s pup will take ${unit(w.line)}, so no other yard can use it — cross off the rest of ${unit(w.line)}.` };
     case 'claiming': return { title: 'Line lock', text: `The only open squares in ${unit(w.line)} belong to ${yard(w.reg)}. So the ${colors[w.reg].name} pup must sit in ${unit(w.line)}, and the yard’s squares elsewhere are out.` };
     case 'crowd': return { title: 'Too crowded', text: `${Unit(w.unit)} has only ${w.victims.length === 1 ? 'one spot' : w.victims.length + ' spots'} left. A pup on ${w.cells.length === 1 ? 'the highlighted square' : 'any of the ' + w.cells.length + ' highlighted squares'} would block all of them — so ${w.cells.length === 1 ? 'it is' : 'they are'} out.` };
-    case 'subsetRegs': return { title: w.regs.length === 2 ? 'Paired yards' : 'Trio of yards', text: `${list(w.regs.map(yard))} fit entirely inside ${list(w.lines.map(unit))}. Those ${w.lines.length} lines are spoken for, so no other yard can use them.` };
-    case 'subsetLines': return { title: w.lines.length === 2 ? 'Paired lines' : 'Trio of lines', text: `${list(w.lines.map(Unit))} only have open squares in ${list(w.regs.map(yard))}. Those yards must supply those lines’ pups, so their squares anywhere else are out.` };
+    case 'subsetRegs': return { title: w.regs.length === 2 ? 'Paired yards' : 'Trio of yards', text: `${cap(yardsText(w.regs))} fit entirely inside ${linesText(w.lines)}. Those ${w.lines.length} lines are spoken for, so no other yard can use them.` };
+    case 'subsetLines': return { title: w.lines.length === 2 ? 'Paired lines' : 'Trio of lines', text: `${cap(linesText(w.lines))} only have open squares in ${yardsText(w.regs)}. Those yards must supply those lines’ pups, so their squares anywhere else are out.` };
     case 'hypo': {
       const chain = w.chain.map(x => unit(x.unit));
       const lead = chain.length ? `That would force a pup into ${list(chain)}, and then ` : 'Then ';

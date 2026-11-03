@@ -78,7 +78,7 @@ function jobsFor(kind) {
     }
   } else if (kind === 'daily') {
     const start = new Date(Date.UTC(2026, 10, 1)); // 2026-11-01
-    const end = new Date(Date.UTC(2028, 11, 31));
+    const end = new Date(Date.UTC(2027, 11, 31));
     for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
       const iso = d.toISOString().slice(0, 10);
       const plan = DAILY_PLAN[d.getUTCDay()];
