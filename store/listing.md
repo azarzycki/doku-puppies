@@ -29,7 +29,7 @@ Character limits are noted next to each field; every text below fits.
 Doku Puppies is a free, cosy logic puzzle with no ads and nothing to buy. Seat exactly one pup in every row, every column and every coloured yard — and keep them apart, because pups never touch, not even at the corners. Every board has a single solution you can reach by pure deduction. No guessing, no countdown, no pressure.
 
 FUN, FAIR GAMEPLAY
-• Tap to cross off a square, tap again to seat a pup, drag to cross off a whole run.
+• Tap to cross off a square, tap again to clear it. Double-tap (or hold) to seat a pup, drag to cross off a whole run.
 • Three hearts per board: a pup on the wrong square costs one, so think it through.
 • Earn stars for clean solves, treats for every win, and tricks (trophies) for feats.
 
@@ -66,13 +66,14 @@ Free, no ads, no purchases — just puzzles and puppies.
 
 **Content rating questionnaire:** no violence, no gambling, no user interaction/chat, no sharing of location. Expected result: Everyone / PEGI 3.
 
-**Target audience:** choose 13+ (the game is for everyone but declaring under-13 audiences brings the Families policy review; the content is still rated Everyone).
+**Target audience:** 13-15, 16-17, 18+ (declared; the game is for everyone but declaring under-13 audiences brings the Families policy review; the content is still rated Everyone).
 
 **Data safety form:**
-- Does the app collect or share user data? **Yes, collects** (game progress is backed up to Firebase so it survives reinstalls). Not shared with third parties. Not required — the game works without it, and "Reset progress" in Settings deletes the local copy; cloud copy is deleted on request.
-- Data type: *App activity → Other user-generated content / app interactions* (puzzle progress, settings, chosen pup). Purpose: App functionality. Optional. Encrypted in transit: Yes.
-- No device or other IDs, no personal info, no location, no financial info, no contacts, no photos.
-- Privacy policy URL: `https://azarzycki.github.io/doku-puppies/privacy.html`
+- Does the app collect or share user data? **Yes, collects** (game progress is backed up to Firebase so it survives reinstalls). Not shared with third parties. Declared **required** because the backup starts automatically with no opt-in switch (make it optional in the form only if a "cloud backup" toggle is added to Settings).
+- Data types declared: *App activity → Other actions* (gameplay progress, settings, chosen pup) and *Device or other IDs* (the random profile key the backup is stored under). Purpose: App functionality. Not processed ephemerally. Encrypted in transit: Yes.
+- No personal info, no location, no financial info, no contacts, no photos. No account creation; no external login.
+- Data deletion: "Yes" with the privacy page as the request URL (`https://azarzycki.github.io/doku-puppies/privacy.html`, which explains deletion by GitHub issue).
+- Privacy policy URL: `https://azarzycki.github.io/doku-puppies/privacy.html` (also linked from Settings inside the app, as Play requires).
 
 **Assets:**
 - App icon 512×512: `icons/icon-512.png`
@@ -90,7 +91,7 @@ Free, no ads, no purchases — just puzzles and puppies.
 - **Name** (30): `Doku Puppies`
 - **Subtitle** (30): `Cosy puppy logic puzzles`
 - **Promotional text** (170): `Seat one pup per row, column and yard — pups never touch! Hints that explain the next move, a daily board, 160 levels, 23 pups to adopt. Free, no ads, no purchases.`
-- **Keywords** (100): `puzzle,logic,dog,puppy,queens,star battle,sudoku,brain,daily,cute,relaxing,offline,no ads`
+- **Keywords** (100): `puzzle,logic,dog,puppy,star battle,sudoku,brain,daily,cute,relaxing,offline,no ads,cosy` (no other product names)
 - **Description:** same text as the Google Play full description.
 - **Category:** Games › Puzzle (secondary: Family) · **Age rating:** 4+
 - **Privacy nutrition label:** Data not linked to you — "Other usage data" (game progress) for App Functionality.

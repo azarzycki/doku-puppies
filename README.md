@@ -12,7 +12,7 @@ Seat exactly one pup in every **row**, every **column** and every coloured **yar
 
 | Feature | Details |
 | --- | --- |
-| Controls | Tap = cross off ✕, tap again = seat a pup, tap a pup = clear. Hold = seat a pup straight away. Drag = cross off many squares. D-pad / keyboard: arrows move, OK/Enter cycles, `X` cross, `P` pup, `U` undo, `H` sniff. |
+| Controls | Tap = cross off ✕, tap again = clear. Double-tap (or hold) = seat a pup, tap a pup = send it home. Drag = cross off many squares. D-pad / keyboard: arrows move, OK/Enter cycles, `X` cross, `P` pup, `U` undo, `H` sniff. |
 | Hearts | 3 per puzzle; a pup on a wrong square costs one. Out of hearts → restart or spend 🦴 5 for one more. |
 | **Sniff 🐽** (hint) | Explains the *next deduction* and highlights the squares involved; tap again to apply it. Techniques: personal space, only-one-spot, yard lock, line lock, too-crowded, paired/trio yards, what-if chains. 3 free per puzzle, then 🦴 1 each. |
 | **Fetch 🦴** | Reveals one correct pup for 🦴 3. |

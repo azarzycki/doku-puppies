@@ -8,6 +8,8 @@ import { buildTerrainSvg } from './terrain.js';
 import { pupSvg } from './pups.js';
 import { sfx, haptic } from './sound.js';
 
+const DOUBLE_TAP_MS = 320; // two taps on the same square inside this window seat a pup
+
 const EMPTY = 0, MARK = 1, PUP = 2;
 const FREE_HINTS = 3;
 
@@ -132,6 +134,7 @@ export class Game {
   bindPointer() {
     const el = this.el;
     let drag = null; // { mode: 'mark'|'erase', moved:false, start:i, timer, batch:[] }
+    let lastTap = null; // { i, t, wasPup } for double-tap detection
     const cellAt = (x, y) => {
       const t = document.elementFromPoint(x, y);
       const c = t && t.closest && t.closest('.cell');
@@ -162,9 +165,17 @@ export class Game {
       if (!drag) return;
       clearTimeout(drag.timer);
       const d = drag; drag = null;
-      if (d.moved) { if (d.batch.length) this.pushHistory(d.batch); return; }
-      if (d.longPressed) return;
-      this.cycle(d.start);
+      if (d.moved) { if (d.batch.length) this.pushHistory(d.batch); lastTap = null; return; }
+      if (d.longPressed) { lastTap = null; return; }
+      const now = performance.now();
+      const i = d.start;
+      if (lastTap && lastTap.i === i && now - lastTap.t < DOUBLE_TAP_MS) {
+        const wasPup = lastTap.wasPup; lastTap = null;
+        if (!wasPup) this.doubleTap(i); // double-tapping a pup just sends it home (the first tap did)
+        return;
+      }
+      lastTap = { i, t: now, wasPup: this.cells[i] === PUP };
+      this.tap(i);
     };
     el.addEventListener('pointerup', finish);
     el.addEventListener('pointercancel', () => { if (drag) { clearTimeout(drag.timer); if (drag.batch.length) this.pushHistory(drag.batch); drag = null; } });
@@ -192,7 +203,23 @@ export class Game {
   pushHistory(batch) { if (batch.length) { this.history.push(batch); this.changed(); } }
   changed() { this.hooks.onChange && this.hooks.onChange(this); }
 
-  /** tap: empty -> mark -> pup -> empty */
+  /** single tap: empty <-> crossed off; a pup is sent home */
+  tap(i) {
+    if (this.done || this.failed || this.given[i]) return;
+    const s = this.cells[i];
+    if (s === EMPTY) { this.pushHistory([{ i, from: s, to: MARK }]); this.set(i, MARK); if (this.settings.haptics) haptic(8); }
+    else { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); if (s === PUP) this.unmarkAuto(i); }
+  }
+
+  /** double tap seats a pup; the first tap's toggle is folded back so undo returns to the original state */
+  doubleTap(i) {
+    if (this.done || this.failed || this.given[i]) return;
+    const last = this.history[this.history.length - 1];
+    if (last && last.length === 1 && last[0].i === i && !last[0].auto) { this.history.pop(); this.set(i, last[0].from, true); }
+    this.tryPlacePup(i);
+  }
+
+  /** keyboard / remote OK: empty -> mark -> pup -> empty */
   cycle(i) {
     if (this.done || this.failed || this.given[i]) return;
     const s = this.cells[i];

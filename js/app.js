@@ -600,7 +600,8 @@ class App {
       <div class="row-buttons"><button class="btn hidden" id="install-btn">Install app</button><a class="btn" href="apk/" target="_blank" rel="noopener">Android APK</a><button class="btn" data-go="help">How to play</button></div>
       <h3>Danger zone</h3>
       <div class="row-buttons"><button class="btn danger" id="reset-btn">Reset progress on this device</button></div>
-      <p class="muted small center">Doku Puppies v1 · made with 🐾 · a puppy take on the "one per row, column and region" puzzle.</p>`;
+      <p class="muted small center">Doku Puppies v1 · made with 🐾 · a puppy take on the "one per row, column and region" puzzle.</p>
+      <p class="muted small center"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>`;
     for (const id of ['sound', 'haptics', 'autoMark', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); } });
     }
@@ -662,7 +663,7 @@ class App {
         ${demo(5, [0,0,1,1,1, 0,0,1,2,1, 3,0,2,2,2, 3,3,3,4,4, 3,3,4,4,4], [1, 8, 10, 19, 22], [])}
         <p class="muted small">A finished 5×5: one pup per row, column and yard, nobody touching.</p></div>
       <div class="help-card"><h3>Controls</h3>
-        <ul><li><b>Tap</b> an empty square to cross it off ✕ (a pup can’t go there).</li><li><b>Tap again</b> to seat a pup. Tap a pup to clear it. <b>Hold</b> an empty square to seat a pup straight away.</li>
+        <ul><li><b>Tap</b> an empty square to cross it off ✕ (a pup can’t go there); tap again to clear it.</li><li><b>Double-tap</b> a square to seat a pup (or <b>hold</b> it). Tap a pup to send it home.</li>
         <li><b>Drag</b> across empty squares to cross off a bunch at once.</li><li><b>Remote / keyboard:</b> arrows move, OK/Enter cycles ✕ → 🐶 → empty. X crosses off, P seats a pup, U undoes, H sniffs.</li></ul></div>
       <div class="help-card"><h3>Hearts, Sniff & Fetch</h3>
         <ul><li>You have <b>3 hearts</b>. Seating a pup on a wrong square costs one. Lose all three and the board resets (or spend 🦴 ${COSTS.heart} treats for one more).</li>
@@ -836,7 +837,7 @@ class App {
     this.dialog({ title: 'Welcome to Doku Puppies! 🐾', cls: 'tutorial',
       html: `<div class="tut"><div class="mascot-face">${pupSvg(this.selectedPup(), { mood: 'excited' })}</div>
         <p>Seat one pup in every <b>row</b>, every <b>column</b> and every coloured <b>yard</b>. Pups never touch — not even corners.</p>
-        <p><b>Tap</b> a square to cross it off, <b>tap again</b> to seat a pup. One pup is already home to get you started.</p>
+        <p><b>Tap</b> a square to cross it off, <b>double-tap</b> to seat a pup. One pup is already home to get you started.</p>
         <p>Stuck? <b>Sniff 🐽</b> explains the next move.</p></div>`,
       buttons: [{ label: 'Let’s go!', primary: true }] });
   }

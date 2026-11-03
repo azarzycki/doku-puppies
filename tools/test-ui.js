@@ -34,6 +34,26 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   check(!!tut, 'tutorial shows on level 1');
   check(await app(page, a => a.handleBack()), 'handleBack closes the tutorial (Android Back)');
   check(!(await app(page, a => a.handleBack())), 'handleBack returns false with nothing open');
+  // real pointer input: tap crosses off, tap again clears, double-tap seats a pup (EMPTY=0, MARK=1, PUP=2)
+  const pick = await app(page, a => { const g = a.game, n = g.n, sol = g.puzzle.solution; let good = -1, bad = -1; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const i = r * n + c; if (g.given[i] || g.cells[i] !== 0) continue; if (sol[r] === c && good < 0) good = i; if (sol[r] !== c && bad < 0) bad = i; } return { good, bad }; });
+  const cellOf = (page, i) => app(page, (a, i) => a.game.cells[i], i);
+  const centre = async i => { const b = await page.locator('#board .cell').nth(i).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
+  await page.waitForTimeout(700); // let the tutorial dialog finish fading out
+  let p = await centre(pick.bad);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.bad)) === 1, 'tap crosses off a square');
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.bad)) === 0, 'tap again clears it');
+  p = await centre(pick.good);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.good)) === 2, 'double-tap seats a pup');
+  const undone = await app(page, (a, i) => { a.game.undo(); return a.game.cells[i]; }, pick.good);
+  check(undone === 0, 'undo after a double-tap returns the square to empty');
+  await page.waitForTimeout(450);
+  p = await centre(pick.good);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.good)) === 0, 'tapping a pup sends it home');
   // wrong pup costs a heart and becomes a mark
   const wrong = await app(page, a => { const g = a.game, n = g.n; const sol = g.puzzle.solution; let i = -1; for (let r = 0; r < n && i < 0; r++) for (let c = 0; c < n; c++) if (sol[r] !== c && !g.given[r * n + c]) { i = r * n + c; break; } g.setCursor(i); g.act('pup'); return g.hearts; });
   check(wrong === 2, 'wrong placement costs a heart (' + wrong + ')');
