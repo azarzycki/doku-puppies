@@ -1,0 +1,10 @@
+{
+  "name": "pupdoku",
+  "private": true,
+  "type": "module",
+  "description": "Pupdoku — a puppy-themed logic puzzle (one pup per row, column and yard; no touching). Static site, no build step.",
+  "scripts": {
+    "levels": "node tools/build-levels.js",
+    "test": "node tools/test-engine.js"
+  }
+}

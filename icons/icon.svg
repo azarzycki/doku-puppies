@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb07c"/><stop offset="1" stop-color="#ff6f8f"/></linearGradient></defs>
+  <rect width="512" height="512" rx="110" fill="url(#g)"/>
+  <g transform="translate(76 86) scale(3.6)">
+    <path d="M27 32 Q6 42 12 72 Q18 86 30 78 Q40 64 36 40 Z" fill="#d79e4e"/>
+    <g transform="translate(100 0) scale(-1 1)"><path d="M27 32 Q6 42 12 72 Q18 86 30 78 Q40 64 36 40 Z" fill="#d79e4e"/></g>
+    <circle cx="50" cy="52" r="35" fill="#e9b96e"/>
+    <ellipse cx="50" cy="66" rx="19" ry="15" fill="#f6dcaa"/>
+    <g fill="#ff8da1" opacity=".35"><circle cx="30" cy="62" r="6"/><circle cx="70" cy="62" r="6"/></g>
+    <circle cx="38" cy="48" r="5.2" fill="#2b2118"/><circle cx="40" cy="46" r="1.8" fill="#fff"/>
+    <circle cx="62" cy="48" r="5.2" fill="#2b2118"/><circle cx="64" cy="46" r="1.8" fill="#fff"/>
+    <path d="M43 60 Q50 55 57 60 Q55 68 50 69 Q45 68 43 60 Z" fill="#5a3a2a"/>
+    <path d="M40 70 Q50 86 60 70 Z" fill="#5a2a2a"/><ellipse cx="50" cy="78" rx="5" ry="5" fill="#ff7b9c"/>
+    <path d="M20 84 Q50 100 80 84 L80 90 Q50 106 20 90 Z" fill="#4fa3e0"/><circle cx="50" cy="96" r="4" fill="#ffd166"/>
+  </g>
+</svg>

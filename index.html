@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Pupdoku — a puppy logic puzzle</title>
+<meta name="description" content="Pupdoku: seat one pup in every row, column and yard — no touching! A cosy logic puzzle with hints that explain the next move, daily boards, treats and a kennel of pups to adopt.">
+<meta name="theme-color" content="#ffb07c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pupdoku">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="bg" aria-hidden="true"><span class="bg-paw">🐾</span><span class="bg-paw">🐾</span><span class="bg-paw">🐾</span><span class="bg-paw">🦴</span><span class="bg-paw">🐾</span><span class="bg-cloud"></span><span class="bg-cloud"></span></div>
+
+<main id="app">
+
+  <!-- HOME -->
+  <section class="screen" id="s-home">
+    <header class="topbar">
+      <span class="badge treats" title="Treats"><span class="ico">🦴</span><span class="treats-count">0</span></span>
+      <span class="badge streak" title="Daily streak"><span class="ico">🔥</span><span class="streak-count">0</span></span>
+      <span class="spacer"></span>
+      <span class="sync-dot off" title="Cloud sync"></span>
+      <button class="icon-btn" data-go="settings" aria-label="Settings">⚙️</button>
+    </header>
+    <div class="hero">
+      <h1 class="logo"><span>Pup</span><span class="logo-paw">🐾</span><span>doku</span></h1>
+      <div class="mascot-row">
+        <button class="mascot-slot" id="home-mascot" aria-label="Your companion"></button>
+        <div class="bubble" id="home-greet">Woof!</div>
+      </div>
+    </div>
+    <button class="btn primary play-btn" id="home-play" data-go="game" autofocus><span class="big">Level 1</span><span class="small">Puppy Park</span></button>
+    <div class="home-grid">
+      <button class="tile" id="home-daily" data-go="daily"><span class="ico">📅</span><span class="lbl">Daily</span><span class="sub"></span></button>
+      <button class="tile" data-go="walks"><span class="ico">🗺️</span><span class="lbl">Walks</span><span class="sub">Level map</span></button>
+      <button class="tile" data-go="free"><span class="ico">🎲</span><span class="lbl">Free play</span><span class="sub">Any size</span></button>
+      <button class="tile" data-go="collection"><span class="ico">🐶</span><span class="lbl">Kennel</span><span class="sub">Your pups</span></button>
+      <button class="tile" data-go="trophies"><span class="ico">🏆</span><span class="lbl">Tricks</span><span class="sub">Trophies &amp; stats</span></button>
+      <button class="tile" data-go="help"><span class="ico">📖</span><span class="lbl">How to play</span><span class="sub">Rules &amp; tips</span></button>
+    </div>
+    <button class="event-card hidden" id="home-event" data-go="event"></button>
+    <div class="tricks-card" id="home-tricks"></div>
+  </section>
+
+  <!-- WALKS -->
+  <section class="screen" id="s-walks">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Walks</h2><span class="spacer"></span><span class="badge treats"><span class="ico">🦴</span><span class="treats-count">0</span></span></header>
+    <div id="walk-list" class="walk-list"></div>
+  </section>
+
+  <!-- GAME -->
+  <section class="screen game" id="s-game">
+    <header class="topbar game-top">
+      <button class="icon-btn" data-back aria-label="Back">‹</button>
+      <div class="game-titles"><b id="game-title">Level</b><small id="game-sub"></small></div>
+      <span class="spacer"></span>
+      <span id="game-rank"></span>
+      <span class="timer" id="game-time">0:00</span>
+    </header>
+    <div class="hud">
+      <div class="hearts" id="hearts"></div>
+      <span class="badge treats"><span class="ico">🦴</span><span class="treats-count">0</span></span>
+    </div>
+    <div class="board-area">
+      <div id="board-wrap"><div id="board" class="board"></div><div class="loader"><div class="mascot-face"></div><p>Sniffing out a puzzle…</p></div></div>
+      <aside class="side">
+        <div class="hint-bubble hidden" id="hint-bubble">
+          <div class="hint-face" id="hint-face"></div>
+          <div class="hint-body"><b id="hint-title"></b><p id="hint-text"></p>
+            <div class="hint-actions"><button class="btn small primary" id="hint-apply">Show me</button><button class="btn small" id="hint-close">Got it</button></div></div>
+        </div>
+        <div class="toolbar">
+          <button class="tool" id="btn-undo"><span class="t-ico">↶</span><span class="t-lbl">Undo</span></button>
+          <button class="tool" id="btn-sniff"><span class="t-ico">🐽</span><span class="t-lbl">Sniff</span><span class="t-sub" id="sniff-cost">3 free</span></button>
+          <button class="tool" id="btn-fetch"><span class="t-ico">🦴</span><span class="t-lbl">Fetch</span><span class="t-sub" id="fetch-cost">🦴 3</span></button>
+          <button class="tool" id="btn-restart"><span class="t-ico">↻</span><span class="t-lbl">Restart</span></button>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- DAILY -->
+  <section class="screen" id="s-daily">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Daily puzzle</h2><span class="spacer"></span><span class="badge streak"><span class="ico">🔥</span><span class="streak-count">0</span></span></header>
+    <div class="card" id="daily-today"></div>
+    <p class="center muted" id="daily-streak"></p>
+    <div class="card" id="daily-cal"></div>
+    <div class="tricks-card" id="daily-tricks"></div>
+  </section>
+
+  <!-- FREE PLAY -->
+  <section class="screen" id="s-free">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Free play</h2><span class="spacer"></span><span class="badge treats"><span class="ico">🦴</span><span class="treats-count">0</span></span></header>
+    <div class="card" id="free-form"></div>
+  </section>
+
+  <!-- COLLECTION -->
+  <section class="screen" id="s-collection">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Kennel</h2><span class="spacer"></span><span class="muted" id="collection-count"></span></header>
+    <div class="pup-grid" id="pup-grid"></div>
+  </section>
+
+  <!-- TROPHIES -->
+  <section class="screen" id="s-trophies">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Tricks &amp; stats</h2><span class="spacer"></span><span class="badge treats"><span class="ico">🦴</span><span class="treats-count">0</span></span></header>
+    <div class="card" id="stats"></div>
+    <div class="card" id="trick-list"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="screen" id="s-settings">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Settings</h2><span class="spacer"></span></header>
+    <div class="card" id="settings-form"></div>
+  </section>
+
+  <!-- HELP -->
+  <section class="screen" id="s-help">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>How to play</h2><span class="spacer"></span></header>
+    <div id="help-body"></div>
+  </section>
+
+  <!-- EVENT -->
+  <section class="screen" id="s-event">
+    <header class="topbar"><button class="icon-btn" data-back aria-label="Back">‹</button><h2>Event</h2><span class="spacer"></span><span class="badge treats"><span class="ico">🦴</span><span class="treats-count">0</span></span></header>
+    <div id="event-body"></div>
+  </section>
+
+</main>
+
+<div id="overlay"></div>
+<div id="toast" aria-live="polite"></div>
+<div id="fx" aria-hidden="true"></div>
+
+<noscript><p style="padding:2rem;text-align:center;font-family:sans-serif">Pupdoku needs JavaScript to run.</p></noscript>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

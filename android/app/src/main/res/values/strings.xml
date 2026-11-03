@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Pupdoku</string>
+    <!-- The page the app loads. Change this if you rename the repo. -->
+    <string name="game_url">https://azarzycki.github.io/pupdoku/</string>
+</resources>

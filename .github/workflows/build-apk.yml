@@ -1,0 +1,38 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['android/**', '.github/workflows/build-apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - name: Install SDK platform 34 (runner ships the SDK and sdkmanager)
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+      - name: Build release APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pupdoku-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
+      - name: Publish as "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Pupdoku Android app (latest build)
+          files: android/app/build/outputs/apk/release/app-release.apk
+          body: |
+            Phones and tablets: open this page on the device and install the APK (allow installs from your browser when asked).
+            Android TV / Google TV: sideload with Downloader by AFTVnews or `adb install`.

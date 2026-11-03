@@ -1,0 +1,66 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "rooms": {
+      "$room": {
+        ".read": "$room.matches(/^[A-Z0-9]{4}$/)",
+        ".write": "$room.matches(/^[A-Z0-9]{4}$/)",
+        "teams": {
+          ".validate": "newData.hasChildren() || newData.val() == null",
+          "$i": {
+            ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 20"
+          }
+        },
+        "renames": {
+          "$i": {
+            ".validate": "$i.matches(/^[0-3]$/) && newData.hasChildren(['name','at']) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 20 && newData.child('at').val() == now && (!data.exists() || now - data.child('at').val() >= 10000)"
+          }
+        },
+        "state": {
+          ".validate": "newData.val() == 'idle' || newData.val() == 'armed' || newData.val() == 'locked'"
+        },
+        "clue": {
+          ".validate": "newData.isString() && newData.val().length < 80"
+        },
+        "players": {
+          "$pid": {
+            ".validate": "newData.hasChildren(['name','team']) && newData.child('name').isString() && newData.child('name').val().length <= 20 && newData.child('team').isNumber()"
+          }
+        },
+        "buzzes": {
+          "$pid": {
+            ".validate": "newData.hasChildren(['name','team','at']) && newData.child('name').isString() && newData.child('name').val().length <= 20"
+          }
+        }
+      }
+    },
+
+    "pupdoku": {
+      "profiles": {
+        "$key": {
+          ".read": "$key.matches(/^[a-f0-9]{32}$/)",
+          ".write": "$key.matches(/^[a-f0-9]{32}$/)",
+          ".validate": "newData.hasChildren(['v', 'updatedAt']) && newData.child('v').isNumber() && newData.child('updatedAt').isNumber()",
+          "treatsEarned": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "treatsSpent": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "selectedPup": { ".validate": "newData.isString() && newData.val().length <= 24" },
+          "progress": {
+            "$puzzle": {
+              ".validate": "$puzzle.length <= 24",
+              "cells": { ".validate": "newData.isString() && newData.val().length <= 144" }
+            }
+          }
+        }
+      },
+      "links": {
+        "$code": {
+          ".read": "$code.matches(/^[A-Z0-9]{6}$/)",
+          ".write": "$code.matches(/^[A-Z0-9]{6}$/)",
+          ".validate": "newData.hasChildren(['key', 'exp']) && newData.child('key').val().matches(/^[a-f0-9]{32}$/) && newData.child('exp').isNumber() && newData.child('exp').val() > now && newData.child('exp').val() < now + 900000"
+        }
+      }
+    }
+  }
+}

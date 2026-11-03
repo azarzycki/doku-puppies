@@ -1,0 +1,18 @@
+{
+  "name": "Pupdoku — puppy logic puzzle",
+  "short_name": "Pupdoku",
+  "description": "Seat one pup in every row, column and yard — no touching! Hints that explain the next move, daily boards, treats and pups to adopt.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fff3e4",
+  "theme_color": "#ffb07c",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "categories": ["games", "puzzle"]
+}

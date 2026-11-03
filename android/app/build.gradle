@@ -1,0 +1,27 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ca.zarzycki.pupdoku'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'ca.zarzycki.pupdoku'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+    signingConfigs {
+        release {
+            // Self-signed key committed to the repo so every build installs over the previous one.
+            storeFile file('release.keystore')
+            storePassword 'pupdoku'
+            keyAlias 'pupdoku'
+            keyPassword 'pupdoku'
+        }
+    }
+    buildTypes {
+        release { minifyEnabled false; signingConfig signingConfigs.release }
+    }
+    lint { checkReleaseBuilds false }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
