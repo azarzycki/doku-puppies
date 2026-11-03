@@ -24,7 +24,8 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
       - name: Restore the private Play upload keystore (repo secrets; skipped on forks)
         if: ${{ secrets.UPLOAD_KEYSTORE_B64 != '' }}
-        env: { UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }} }
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
         run: |
           echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
           echo "UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.keystore" >> "$GITHUB_ENV"
