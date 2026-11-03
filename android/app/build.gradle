@@ -5,7 +5,7 @@ android {
     compileSdk 36
     defaultConfig {
         applicationId 'ca.zarzycki.dokupuppies'
-        minSdk 21
+        minSdk 24   // Play automatic protection (on by default for new apps) needs API 24+
         targetSdk 36   // Google Play requires new apps to target Android 16 (API 36)
         versionCode 1
         versionName '1.0'

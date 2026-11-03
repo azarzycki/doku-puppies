@@ -79,7 +79,7 @@ Free, no ads, no purchases — just puzzles and puppies.
 - App icon 512×512: `icons/icon-512.png`
 - Feature graphic 1024×500: `store/feature-graphic.png`
 - Screenshots: `store/screenshots/` (run `node tools/screenshots.js` against a running copy of the site: phone 1080×1920, 7" tablet 1200×1920, 10" tablet 2560×1600, TV 1920×1080)
-- Upload: `app-release.aab` from the "Build Android app" workflow (Releases → latest). Package `ca.zarzycki.dokupuppies`, bump `versionCode` in `android/app/build.gradle` for every upload.
+- Upload: `app-release.aab` from the "Build Android app" workflow (Releases → latest; only uploadable once the `UPLOAD_*` secrets are set, otherwise build locally with the private key). Package `ca.zarzycki.dokupuppies`, bump `versionCode` in `android/app/build.gradle` for every upload.
 
 **Release notes (500 max):**
 `First release: 160 levels in six walks, a daily puzzle with streaks, free play up to 12×12, hints that explain the next move, and 23 pups to adopt. Free, no ads.`
