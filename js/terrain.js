@@ -90,34 +90,66 @@ const TERRAIN_SPRITES = {
 
 // ---------------------------------------------------------------- fence
 
+/**
+ * A low picket fence in a simplified isometric look: light from the top-left, so every board has a
+ * lit front face, a darker right-hand side face and a top face; cube corner posts; a gate; and a
+ * soft shadow cast onto the yards along the inside of the north and west runs.
+ */
 function fence(n, m) {
-  // pickets around the board; m = fence depth in cell units; drawn in the margin area
-  const h = m * .92, w = Math.min(.3, m * .55), gap = Math.max(.03, m * .1);
-  const post = (x, y, rot) => `<g transform="translate(${x} ${y}) rotate(${rot})"><path d="M${-w / 2} 0 L${-w / 2} ${-h * .78} L0 ${-h} L${w / 2} ${-h * .78} L${w / 2} 0 Z" fill="#fde7b8" stroke="#a9733a" stroke-width="${m * .07}" stroke-linejoin="round"/></g>`;
-  const rail = (x1, y1, x2, y2) => `<path d="M${x1} ${y1} L${x2} ${y2}" stroke="#d9a35c" stroke-width="${m * .16}" stroke-linecap="round"/>`;
-  const run = (len, step) => { const out = []; for (let s = step / 2; s < len; s += step) out.push(s); return out; };
-  const step = w + gap;
+  const h = m * .74, w = Math.min(.3, m * .55), gap = Math.max(.05, m * .12);
+  const dx = w * .38, dy = -w * .2;            // isometric depth offset (right and slightly up)
+  const tip = h * .22, sw = Math.max(.012, m * .045);
+  const F = '#fde9bf', S = '#c98c4e', T = '#f0c37c', O = '#9a6633'; // front, side, top, outline
+  const f = v => v.toFixed(3);
+  const poly = (pts, fill) => `<path d="M${pts.map(([x, y]) => f(x) + ' ' + f(y)).join(' L')} Z" fill="${fill}" stroke="${O}" stroke-width="${f(sw)}" stroke-linejoin="round"/>`;
+  // an upright picket with its base at (x, y)
+  const picket = (x, y) => {
+    const g = (px, py) => [x + px, y + py];
+    const side = poly([g(w / 2, 0), g(w / 2, -h + tip), g(w / 2 + dx, -h + tip + dy), g(w / 2 + dx, dy)], S);
+    const roof = poly([g(0, -h), g(w / 2, -h + tip), g(w / 2 + dx, -h + tip + dy), g(dx, -h + dy)], T);
+    const front = poly([g(-w / 2, 0), g(-w / 2, -h + tip), g(0, -h), g(w / 2, -h + tip), g(w / 2, 0)], F);
+    return side + roof + front;
+  };
+  // a horizontal rail from x1..x2 whose top is at y (front face below it)
+  const railH = (x1, x2, y, thick) => poly([[x1, y], [x2, y], [x2 + dx, y + dy], [x1 + dx, y + dy]], T) + poly([[x1, y], [x2, y], [x2, y + thick], [x1, y + thick]], S);
+  // a rail running north-south (we see its top face as a slanted strip and its east face)
+  const railV = (x, y1, y2, thick) => poly([[x, y1], [x + thick, y1], [x + thick, y2], [x, y2]], S) + poly([[x + thick, y1], [x + thick + dx * .9, y1 + dy * .9], [x + thick + dx * .9, y2 + dy * .9], [x + thick, y2]], T);
+  const cube = (x, y, s, hh) => { // corner post: front, side, top
+    const g = (px, py) => [x + px, y + py];
+    return poly([g(s / 2, 0), g(s / 2, -hh), g(s / 2 + dx, -hh + dy), g(s / 2 + dx, dy)], S)
+      + poly([g(-s / 2, -hh), g(s / 2, -hh), g(s / 2 + dx, -hh + dy), g(-s / 2 + dx, -hh + dy)], '#f6d79a')
+      + poly([g(-s / 2, 0), g(-s / 2, -hh), g(s / 2, -hh), g(s / 2, 0)], '#e8b36a');
+  };
+  const run = (len, step) => { const out = []; for (let s = step / 2; s < len - step / 4; s += step) out.push(s); return out; };
+  const step = w + gap, thick = m * .14;
   let s = '';
-  // rails first (behind pickets)
-  s += rail(-m * .1, -m * .3, n + m * .1, -m * .3) + rail(-m * .1, -m * .62, n + m * .1, -m * .62);
-  s += rail(-m * .1, n + m * .3, n + m * .1, n + m * .3) + rail(-m * .1, n + m * .62, n + m * .1, n + m * .62);
-  s += rail(-m * .3, -m * .1, -m * .3, n + m * .1) + rail(-m * .62, -m * .1, -m * .62, n + m * .1);
-  s += rail(n + m * .3, -m * .1, n + m * .3, n + m * .1) + rail(n + m * .62, -m * .1, n + m * .62, n + m * .1);
-  for (const x of run(n, step)) { s += post(x, -m * .04, 0) + post(x, n + m * .96, 0); }
-  for (const y of run(n, step)) { s += post(-m * .04, y, -90) + post(n + m * .04, y, 90); }
+  // ground shadow cast by the fence onto the yards (north and west runs)
+  s += `<defs><linearGradient id="fsh-v" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b1a0a" stop-opacity=".32"/><stop offset="1" stop-color="#2b1a0a" stop-opacity="0"/></linearGradient><linearGradient id="fsh-h" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2b1a0a" stop-opacity=".26"/><stop offset="1" stop-color="#2b1a0a" stop-opacity="0"/></linearGradient></defs>`;
+  s += `<rect x="0" y="0" width="${n}" height="${f(m * .55)}" fill="url(#fsh-v)"/><rect x="0" y="0" width="${f(m * .4)}" height="${n}" fill="url(#fsh-h)"/>`;
+  // rails (behind the pickets)
+  for (const y of [-m * .3, -m * .58]) s += railH(-m * .2, n + m * .2, y, thick);
+  for (const y of [n + m * .48, n + m * .2]) s += railH(-m * .2, n + m * .2, y, thick);
+  for (const x of [-m * .7, -m * .42]) s += railV(x, -m * .15, n + m * .15, thick);
+  for (const x of [n + m * .3, n + m * .58]) s += railV(x, -m * .15, n + m * .15, thick);
+  // pickets: north run, then west and east runs top-to-bottom, then south run
+  for (const x of run(n, step)) s += picket(x, -m * .08);
+  for (const y of run(n, step)) s += picket(-m * .5, y + m * .3) + picket(n + m * .5, y + m * .3);
+  for (const x of run(n, step)) s += picket(x, n + m * .92);
   // corner posts
-  for (const [x, y] of [[-m * .5, -m * .5], [n + m * .5, -m * .5], [-m * .5, n + m * .5], [n + m * .5, n + m * .5]]) {
-    s += `<rect x="${x - m * .22}" y="${y - m * .22}" width="${m * .44}" height="${m * .44}" rx="${m * .1}" fill="#c98a4b" stroke="#8b5a2b" stroke-width="${m * .06}"/>`;
-  }
-  // a little gate in the middle of the bottom run
-  const gx = n / 2;
-  s += `<g transform="translate(${gx} ${n + m * .96})"><rect x="${-step * 1.5}" y="${-h * .9}" width="${step * 3}" height="${h * .9}" rx="${m * .05}" fill="#f7cf8c" stroke="#a9733a" stroke-width="${m * .06}"/><path d="M${-step * 1.4} ${-h * .15} L${step * 1.4} ${-h * .8}" stroke="#a9733a" stroke-width="${m * .06}"/><circle cx="${step * 1.1}" cy="${-h * .45}" r="${m * .07}" fill="#6b4a2b"/></g>`;
+  const ps = Math.min(.42, m * .6);
+  for (const [x, y] of [[-m * .5, -m * .05], [n + m * .5, -m * .05], [-m * .5, n + m * .95], [n + m * .5, n + m * .95]]) s += cube(x, y, ps, h * 1.08);
+  // gate in the middle of the south run (slightly lower boards, a diagonal brace, a latch)
+  const gx = n / 2, gw = step * 3, gh = h * .86, gy = n + m * .92;
+  s += poly([[gx + gw / 2, gy], [gx + gw / 2, gy - gh], [gx + gw / 2 + dx, gy - gh + dy], [gx + gw / 2 + dx, gy + dy]], S);
+  s += poly([[gx - gw / 2, gy], [gx - gw / 2, gy - gh], [gx + gw / 2, gy - gh], [gx + gw / 2, gy]], '#f7d194');
+  s += `<path d="M${f(gx - gw / 2 + sw)} ${f(gy - gh * .15)} L${f(gx + gw / 2 - sw)} ${f(gy - gh * .85)} M${f(gx - gw / 6)} ${f(gy)} L${f(gx - gw / 6)} ${f(gy - gh)} M${f(gx + gw / 6)} ${f(gy)} L${f(gx + gw / 6)} ${f(gy - gh)}" stroke="${O}" stroke-width="${f(sw)}" fill="none"/>`;
+  s += `<circle cx="${f(gx + gw * .36)}" cy="${f(gy - gh * .5)}" r="${f(m * .07)}" fill="#6b4a2b"/>`;
   return `<g class="fence">${s}</g>`;
 }
 
 function bird(n, m, rng) {
   const x = .5 + rng.int(Math.max(1, Math.floor(n - 1)));
-  return `<g class="an an-bird" transform="translate(${x} ${-m * .98})"><g transform="scale(${Math.min(.9, m * 1.8)})">
+  return `<g class="an an-bird" transform="translate(${x} ${-m * .86})"><g transform="scale(${Math.min(.9, m * 1.8)})">
     <ellipse cy="-.08" rx=".12" ry=".085" fill="#6fb6ff"/><circle cx=".1" cy="-.16" r=".07" fill="#6fb6ff"/><path d="M.16 -.16 L.24 -.14 L.16 -.12 Z" fill="#ff9a3d"/><circle cx=".12" cy="-.18" r=".016" fill="#222"/>
     <path d="M-.16 -.1 l-.08 -.05" stroke="#4a90d9" stroke-width=".03" stroke-linecap="round"/><path d="M-.03 0 l0 .05 M.03 0 l0 .05" stroke="#ff9a3d" stroke-width=".018"/></g></g>`;
 }

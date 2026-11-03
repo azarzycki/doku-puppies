@@ -4,7 +4,7 @@
 import { Store, todayKey, nextDayKey } from './store.js';
 import { PUPS, PUP_BY_ID, EVENTS, activeEvent, eventKey, pupSvg, lockedPupSvg } from './pups.js';
 import { getLevel, getEndlessLevel, getFreePuzzle, getDaily, getEventPuzzle, getWalks, levelCount, loadLevels, loadDaily, RANKS, WALKS_META } from './puzzles.js';
-import { Game, FREE_HINTS } from './game.js';
+import { Game, FREE_HINTS, MARK_STYLES } from './game.js';
 import { sfx, setSoundEnabled, haptic } from './sound.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -590,6 +590,8 @@ class App {
       ${toggle('showCoords', 'Show coordinates', 'Column,row in each square (handy with hints)')}
       ${toggle('bigText', 'Bigger text', 'For tablets and TVs across the room')}
       ${toggle('reduceMotion', 'Reduce motion', 'Fewer bouncy animations')}
+      <h3>“No pup here” mark</h3>
+      <div class="chips mark-chips">${[['bones', 'Crossed bones'], ['x', 'Classic ✕'], ['paw', 'No-paw sign']].map(([id, label]) => `<button class="chip ${(s.markStyle || 'bones') === id ? 'on' : ''}" data-mark="${id}"><span class="chip-mark">${MARK_STYLES[id]}</span>${label}</button>`).join('')}</div>
       <h3>Sync across devices</h3>
       <div class="sync-box"><div id="sync-status" class="muted"></div>
         <div class="row-buttons"><button class="btn" id="sync-link">Link another device</button><button class="btn" id="sync-enter">Enter a code</button></div>
@@ -602,6 +604,7 @@ class App {
     for (const id of ['sound', 'haptics', 'autoMark', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); } });
     }
+    $$('.mark-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.markStyle = b.dataset.mark; this.store.commit('settings'); sfx.tap(); if (this.game) this.game.setMarkStyle(b.dataset.mark); this.renderSettings(); }));
     $('#sync-link').addEventListener('click', () => this.linkDevice());
     $('#sync-enter').addEventListener('click', () => this.enterCode());
     $('#install-btn').addEventListener('click', async () => { if (!this.deferredInstall) return; this.deferredInstall.prompt(); await this.deferredInstall.userChoice; this.deferredInstall = null; $('#install-btn').classList.add('hidden'); });

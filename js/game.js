@@ -11,7 +11,17 @@ import { sfx, haptic } from './sound.js';
 const EMPTY = 0, MARK = 1, PUP = 2;
 const FREE_HINTS = 3;
 
-const MARK_SVG = `<svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7 L17 17 M17 7 L7 17" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" fill="none"/></svg>`;
+/** "No pup here" marks. bones (default): two glossy crossed bones; x: a bold ✕; paw: a paw print in a no-entry ring. */
+export const MARK_STYLES = {
+  bones: `<svg class="mark mark-bones" viewBox="0 0 100 100" aria-hidden="true">
+    <g transform="translate(2 3)" fill="#000" opacity=".22"><g transform="rotate(45 50 50)"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g><g transform="rotate(-45 50 50)"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g></g>
+    <g transform="rotate(45 50 50)"><g fill="#fff4dc" stroke="#b8863f" stroke-width="3"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g><rect x="28" y="45" width="44" height="4" rx="2" fill="#fff" opacity=".85"/></g>
+    <g transform="rotate(-45 50 50)"><g fill="#fff4dc" stroke="#b8863f" stroke-width="3"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g><rect x="28" y="45" width="44" height="4" rx="2" fill="#fff" opacity=".85"/></g>
+    <circle class="mark-shine" cx="50" cy="50" r="6" fill="#fff" opacity=".9"/></svg>`,
+  x: `<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true"><path d="M24 24 L76 76 M76 24 L24 76" stroke="#fff" stroke-width="24" stroke-linecap="round" fill="none" opacity=".9"/><path d="M24 24 L76 76 M76 24 L24 76" stroke="#4a3528" stroke-width="13" stroke-linecap="round" fill="none"/><path d="M28 24 L48 44" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".7"/></svg>`,
+  paw: `<svg class="mark mark-paw" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#fff" stroke="#e5484d" stroke-width="9"/><g fill="#4a3528"><ellipse cx="50" cy="60" rx="15" ry="13"/><circle cx="31" cy="46" r="7.5"/><circle cx="43" cy="35" r="7.5"/><circle cx="57" cy="35" r="7.5"/><circle cx="69" cy="46" r="7.5"/></g><path d="M23 77 L77 23" stroke="#e5484d" stroke-width="9" stroke-linecap="round"/></svg>`,
+};
+const markSvg = style => MARK_STYLES[style] || MARK_STYLES.bones;
 
 export class Game {
   /**
@@ -70,7 +80,7 @@ export class Game {
       if (c === n - 1) d.classList.add('br');
       d.style.animationDelay = ((r + c) * 28) + 'ms';
       d.addEventListener('animationend', () => { d.style.animationDelay = ''; }, { once: true });
-      d.innerHTML = `<div class="cell-inner">${MARK_SVG}<div class="token"></div><span class="coord">${c + 1},${r + 1}</span></div>`;
+      d.innerHTML = `<div class="cell-inner">${markSvg(this.settings.markStyle)}<div class="token"></div><span class="coord">${c + 1},${r + 1}</span></div>`;
       boardEl.appendChild(d);
       this.cellEls.push(d);
     }
@@ -81,6 +91,12 @@ export class Game {
     this.updateAria();
   }
 
+  /** swap the mark artwork on a live board */
+  setMarkStyle(style) {
+    this.settings.markStyle = style;
+    if (!this.cellEls) return;
+    for (const d of this.cellEls) { const old = d.querySelector('.mark'); if (old) old.outerHTML = markSvg(style); }
+  }
   /** fence depth (cell units) for the current cell size; the frame's padding must match */
   static fenceUnits(cellPx) { const px = Math.min(30, Math.max(16, .45 * cellPx)); return px / Math.max(1, cellPx); }
   drawTerrain() {
