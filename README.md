@@ -23,6 +23,7 @@ Seat exactly one pup in every **row**, every **column** and every coloured **yar
 | Difficulty ranking | Every board is graded by the deduction techniques a human solver needs, scaled by board size: 🐾 Puppy, 🐾🐾 Good dog, 🐾🐾🐾 Clever, 🐾🐾🐾🐾 Top dog, 🐾🐾🐾🐾🐾 Legend. |
 | Prizes | 🦴 treats for levels, three-star solves, dailies, streak milestones, *today's tricks* (three rotating daily goals) and *tricks* (trophies). A kennel of 23 pups to adopt (walk bosses, streaks, feats, seasonal events); the chosen companion sits on the board with you. |
 | Events | Seasonal windows every year (Howl-o-ween, Santa Paws, Puppy Love, Lucky Pup, Spring Hop, Beach Days, Fall Walkies): five event boards each, adopt the event pup. |
+| Yards | Every region is a kind of ground a dog walks on — grass, clover, meadow, sandpit, dirt trail, boardwalk, stone path, pond, splash pool, leaf pile, lavender bed, rose bed — drawn as vector patterns inside a picket fence, with small occasional idle animations (swaying tufts, ripples, a frog, a duck, butterflies, a bee, drifting leaves, a bird on the fence). Neighbouring yards are always assigned clearly different terrains. |
 | Offline | Installable PWA; the service worker caches the whole game. |
 | Sync | Progress is saved on the device and mirrored to Firebase; link devices with a 6-letter code (Settings). |
 
@@ -36,6 +37,7 @@ js/game.js            one puzzle session: board, input, hearts, timer, undo, hin
 js/app.js             screens, navigation, progression, treats, tricks, kennel, events, D-pad support
 js/puzzles.js         campaign/bank/daily sources, colour assignment, hint wording
 js/pups.js            puppy roster, SVG art, seasonal events
+js/terrain.js         yard terrains (12 tiling ground textures), picket fence, idle scenery sprites
 js/store.js           profile, localStorage, Firebase sync + link codes
 js/sound.js           synthesised sound effects
 js/gen-worker.js      runtime generation off the main thread

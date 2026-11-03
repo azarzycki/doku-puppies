@@ -4,6 +4,7 @@
  */
 import { nextDeduction, neighbours8, shadowOf } from './engine.js';
 import { assignColors, explainStep } from './puzzles.js';
+import { buildTerrainSvg } from './terrain.js';
 import { pupSvg } from './pups.js';
 import { sfx, haptic } from './sound.js';
 
@@ -45,8 +46,9 @@ export class Game {
 
   // ---------------------------------------------------------------- DOM
 
-  mount(boardEl) {
+  mount(boardEl, frameEl) {
     this.el = boardEl;
+    this.frameEl = frameEl || boardEl.parentElement;
     boardEl.innerHTML = '';
     boardEl.style.setProperty('--n', this.n);
     boardEl.setAttribute('role', 'grid');
@@ -73,9 +75,20 @@ export class Game {
       this.cellEls.push(d);
     }
     boardEl.classList.toggle('coords', !!this.settings.showCoords);
+    this.drawTerrain();
     for (let i = 0; i < this.N; i++) this.paintCell(i, false);
     this.bindPointer();
     this.updateAria();
+  }
+
+  /** fence depth (cell units) for the current cell size; the frame's padding must match */
+  static fenceUnits(cellPx) { const px = Math.min(30, Math.max(16, .45 * cellPx)); return px / Math.max(1, cellPx); }
+  drawTerrain() {
+    const old = this.frameEl.querySelector('svg.terrain'); if (old) old.remove();
+    const cellPx = parseFloat(getComputedStyle(this.el).getPropertyValue('--cell')) || 40;
+    const m = Game.fenceUnits(cellPx);
+    this.frameEl.style.setProperty('--fence', (m * cellPx).toFixed(2) + 'px');
+    this.frameEl.insertAdjacentHTML('afterbegin', buildTerrainSvg(this.puzzle, this.colors, m));
   }
 
   paintCell(i, animate = true) {
@@ -94,7 +107,7 @@ export class Game {
   cellLabel(i) {
     const r = (i / this.n | 0) + 1, c = (i % this.n) + 1;
     const state = this.cells[i] === PUP ? (this.given[i] ? 'starting pup' : 'pup') : this.cells[i] === MARK ? 'crossed off' : 'empty';
-    return `Row ${r}, column ${c}, ${this.colors[this.puzzle.regions[i]].name} yard, ${state}`;
+    return `Row ${r}, column ${c}, ${this.colors[this.puzzle.regions[i]].label}, ${state}`;
   }
   updateAria() { this.el.setAttribute('aria-label', `${this.n} by ${this.n} board`); }
 

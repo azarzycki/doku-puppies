@@ -156,14 +156,17 @@ a.btn { text-decoration: none; }
 #btn-sniff .t-ico { display: inline-block; animation: sniff 2.8s ease-in-out infinite; }
 @keyframes sniff { 0%, 100% { transform: none; } 10% { transform: translate(-2px, 1px) rotate(-8deg); } 20% { transform: translate(2px, 1px) rotate(8deg); } 30% { transform: none; } }
 
-/* board */
-.board { display: grid; grid-template-columns: repeat(var(--n), var(--cell)); grid-template-rows: repeat(var(--n), var(--cell)); background: #4a3a30; border-radius: 12px; padding: 0; box-shadow: 0 18px 40px rgba(90, 50, 30, .25); touch-action: none; user-select: none; -webkit-user-select: none; overflow: hidden; }
-.cell { position: relative; width: var(--cell); height: var(--cell); background: var(--rc); border-top: 1px solid rgba(0, 0, 0, .09); border-left: 1px solid rgba(0, 0, 0, .09); animation: cell-in .45s var(--ease-pop) both; outline: none; }
-.cell.bt { border-top: 3px solid #4a3a30; } .cell.bl { border-left: 3px solid #4a3a30; } .cell.bb { border-bottom: 3px solid #4a3a30; } .cell.br { border-right: 3px solid #4a3a30; }
+/* board: a fenced yard. The terrain SVG (yards, fence, idle sprites) sits under the transparent grid. */
+.board-frame { position: relative; padding: var(--fence, 14px); border-radius: 16px; filter: drop-shadow(0 14px 22px rgba(90, 50, 30, .22)); }
+.board-frame svg.terrain { position: absolute; inset: 0; width: 100%; height: 100%; display: block; border-radius: 16px; }
+.board { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(var(--n), var(--cell)); grid-template-rows: repeat(var(--n), var(--cell)); background: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
+.cell { position: relative; width: var(--cell); height: var(--cell); background: transparent; border-top: 1px solid rgba(60, 40, 20, .16); border-left: 1px solid rgba(60, 40, 20, .16); animation: cell-in .45s var(--ease-pop) both; outline: none; }
+.cell.bt { border-top: 3px solid #6b4a2b; } .cell.bl { border-left: 3px solid #6b4a2b; } .cell.bb { border-bottom: 3px solid #6b4a2b; } .cell.br { border-right: 3px solid #6b4a2b; }
+.cell-inner { transition: background .25s; }
 @keyframes cell-in { from { transform: scale(.4); opacity: 0; } }
 .cell-inner { position: absolute; inset: 0; display: grid; place-items: center; }
-.cell .mark { position: absolute; width: 46%; height: 46%; color: #5c4a42; opacity: 0; transform: scale(.3); transition: opacity .15s, transform .25s var(--ease-pop); }
-.cell.is-mark .mark { opacity: .8; transform: scale(1); }
+.cell .mark { position: absolute; width: 46%; height: 46%; color: #4a3528; opacity: 0; transform: scale(.3); transition: opacity .15s, transform .25s var(--ease-pop); }
+.cell.is-mark .mark { opacity: .85; transform: scale(1); filter: drop-shadow(0 0 2px rgba(255, 255, 255, .7)); }
 .cell.pop .mark { animation: mark-pop .35s var(--ease-pop); }
 @keyframes mark-pop { 0% { transform: scale(.2) rotate(-30deg); } 70% { transform: scale(1.25) rotate(6deg); } 100% { transform: scale(1); } }
 .cell .token { position: absolute; inset: 6%; display: grid; place-items: center; pointer-events: none; }
@@ -172,7 +175,7 @@ a.btn { text-decoration: none; }
 @keyframes drop { 0% { transform: translateY(-120%) scale(.6); opacity: 0; } 55% { transform: translateY(6%) scale(1.15, .85); opacity: 1; } 75% { transform: translateY(-6%) scale(.95, 1.08); } 100% { transform: none; } }
 .cell.is-given .token svg { filter: drop-shadow(0 0 4px rgba(255, 207, 77, .9)); }
 .given-badge { position: absolute; right: -4%; bottom: -6%; font-size: calc(var(--cell) * .28); filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .2)); }
-.cell.wrong { background: #ffb5bd !important; animation: cell-shake .5s; }
+.cell.wrong { animation: cell-shake .5s; } .cell.wrong .cell-inner { background: rgba(255, 100, 125, .72); }
 .cell.wrong .token svg { animation: nope .6s ease-in-out; filter: drop-shadow(0 0 6px rgba(255, 60, 90, .8)); }
 @keyframes cell-shake { 0%, 100% { transform: none; } 20% { transform: translateX(-4px) rotate(-3deg); } 40% { transform: translateX(4px) rotate(3deg); } 60% { transform: translateX(-3px); } 80% { transform: translateX(3px); } }
 @keyframes nope { 0% { transform: scale(1); } 25% { transform: scale(1.1) rotate(-12deg); } 50% { transform: scale(1.1) rotate(12deg); } 75% { transform: scale(1) rotate(-6deg); } 100% { transform: scale(.6); opacity: 0; } }
@@ -184,8 +187,8 @@ a.btn { text-decoration: none; }
 .coord { position: absolute; top: 1px; left: 3px; font-size: calc(var(--cell) * .2); color: rgba(0, 0, 0, .35); display: none; font-weight: 700; }
 .board.coords .coord { display: block; }
 /* hint highlighting */
-.board.hinting .cell:not(.hl) { filter: brightness(.72) saturate(.5); }
-.board.hinting .cell.hl { filter: none; }
+.board.hinting .cell:not(.hl) .cell-inner { background: rgba(70, 45, 35, .55); }
+.board.hinting .cell.hl .cell-inner { background: rgba(255, 255, 255, .18); }
 .board.hinting .cell.hl-main { animation: hl-pulse 1.2s ease-in-out infinite; z-index: 1; }
 @keyframes hl-pulse { 50% { box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .95), 0 0 14px rgba(255, 255, 255, .9); } }
 .board.hinting .cell.hl-out::before { content: "✕"; position: absolute; inset: 0; display: grid; place-items: center; font-size: calc(var(--cell) * .55); color: var(--bad); font-weight: 900; opacity: .85; animation: fade-in .4s; }
@@ -303,6 +306,37 @@ a.btn { text-decoration: none; }
 .zoomies svg { width: 100%; height: 100%; animation: run-bob .25s ease-in-out infinite alternate; }
 @keyframes zoom-run { 0% { left: -160px; transform: scaleX(1); } 48% { left: calc(100vw + 10px); transform: scaleX(1); } 50% { transform: scaleX(-1); } 100% { left: -160px; transform: scaleX(-1); } }
 @keyframes run-bob { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-10px) rotate(4deg); } }
+
+/* ---------------------------------------------------------------- yard idle animations (occasional, localized) */
+.terrain .an { transform-box: fill-box; transform-origin: center; }
+.terrain .an-sway { transform-origin: 50% 100%; animation: t-sway var(--p, 11s) ease-in-out infinite var(--d, 0s); }
+@keyframes t-sway { 0%, 76%, 100% { transform: rotate(0); } 81% { transform: rotate(-10deg); } 87% { transform: rotate(8deg); } 93% { transform: rotate(-4deg); } }
+.terrain .an-ripple circle { transform-box: fill-box; transform-origin: center; animation: t-ripple 7s ease-out infinite var(--d, 0s); }
+@keyframes t-ripple { 0% { transform: scale(.15); opacity: .95; } 28% { transform: scale(1); opacity: 0; } 100% { transform: scale(1); opacity: 0; } }
+.terrain .an-butterfly { animation: t-flutter var(--p, 14s) ease-in-out infinite var(--d, 0s); opacity: 0; }
+@keyframes t-flutter { 0%, 100% { opacity: 0; transform: translate(-.5px, .35px); } 4% { opacity: 1; } 14% { transform: translate(-.1px, -.15px); } 24% { transform: translate(.35px, .1px); } 32% { opacity: 1; transform: translate(.6px, -.35px); } 36% { opacity: 0; transform: translate(.7px, -.45px); } }
+.terrain .an-flap { transform-box: fill-box; transform-origin: center; animation: t-flap .35s ease-in-out infinite alternate; }
+@keyframes t-flap { from { transform: scaleX(1); } to { transform: scaleX(.35); } }
+.terrain .an-bee { animation: t-bee var(--p, 13s) ease-in-out infinite var(--d, 0s); opacity: 0; }
+@keyframes t-bee { 0%, 100% { opacity: 0; transform: translate(.5px, .2px); } 5% { opacity: 1; } 12% { transform: translate(.1px, -.1px); } 20% { transform: translate(-.2px, .05px); } 28% { transform: translate(-.35px, -.25px); opacity: 1; } 33% { opacity: 0; transform: translate(-.5px, -.4px); } }
+.terrain .an-crawl { animation: t-crawl var(--p, 12s) linear infinite var(--d, 0s); }
+@keyframes t-crawl { 0%, 60%, 100% { transform: translate(0, 0) rotate(0); } 70% { transform: translate(.12px, -.08px) rotate(20deg); } 82% { transform: translate(.3px, -.05px) rotate(-10deg); } 90% { transform: translate(.3px, -.05px) rotate(-10deg); } }
+.terrain .an-hop { transform-box: fill-box; transform-origin: 50% 100%; animation: t-hop var(--p, 10s) ease-in-out infinite var(--d, 0s); }
+@keyframes t-hop { 0%, 80%, 100% { transform: translateY(0) scaleY(1); } 83% { transform: translateY(.02px) scaleY(.85); } 88% { transform: translateY(-.28px) scaleY(1.08); } 93% { transform: translateY(0) scaleY(.92); } 96% { transform: translateY(0) scaleY(1); } }
+.terrain .an-duck { animation: t-duck 3.2s ease-in-out infinite var(--d, 0s); }
+@keyframes t-duck { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(.03px) rotate(3deg); } }
+.terrain .an-fall { animation: t-fall var(--p, 12s) ease-in infinite var(--d, 0s); opacity: 0; }
+@keyframes t-fall { 0%, 100% { opacity: 0; transform: translate(0, -.5px) rotate(0); } 3% { opacity: 1; } 12% { transform: translate(.15px, -.1px) rotate(70deg); } 22% { transform: translate(-.1px, .35px) rotate(160deg); } 28% { opacity: 1; transform: translate(.05px, .55px) rotate(200deg); } 32% { opacity: 0; } }
+.terrain .an-sparkle { animation: t-sparkle var(--p, 9s) ease-in-out infinite var(--d, 0s); opacity: 0; }
+@keyframes t-sparkle { 0%, 100% { opacity: 0; transform: scale(.2) rotate(0); } 6% { opacity: 1; transform: scale(1.1) rotate(40deg); } 12% { opacity: 0; transform: scale(.2) rotate(90deg); } }
+.terrain .an-dust { animation: t-dust var(--p, 11s) ease-out infinite var(--d, 0s); opacity: 0; }
+@keyframes t-dust { 0%, 100% { opacity: 0; transform: scale(.3); } 4% { opacity: .8; } 16% { opacity: 0; transform: scale(1.4) translate(.1px, -.2px); } }
+.terrain .an-crab { animation: t-crab var(--p, 13s) ease-in-out infinite var(--d, 0s); }
+@keyframes t-crab { 0%, 70%, 100% { transform: translateX(0); } 76% { transform: translateX(.35px); } 82% { transform: translateX(.35px); } 90% { transform: translateX(0); } }
+.terrain .an-bob { animation: t-bob var(--p, 8s) ease-in-out infinite var(--d, 0s); }
+@keyframes t-bob { 0%, 80%, 100% { transform: translateY(0) scale(1); } 86% { transform: translateY(-.05px) scale(1.12); } 92% { transform: translateY(.01px) scale(.96); } }
+.terrain .an-bird { animation: t-bird 26s ease-in-out infinite; opacity: 0; transform-box: fill-box; transform-origin: 50% 100%; }
+@keyframes t-bird { 0%, 100% { opacity: 0; transform: translate(.6px, -.8px); } 4% { opacity: 1; transform: translate(0, 0); } 8% { transform: translate(0, -.08px); } 10% { transform: translate(0, 0); } 16% { transform: translate(.05px, 0) scaleX(-1); } 20% { transform: translate(.05px, -.08px) scaleX(-1); } 22% { transform: translate(.05px, 0) scaleX(-1); } 30% { opacity: 1; transform: translate(.05px, 0) scaleX(-1); } 36% { opacity: 0; transform: translate(-.8px, -.9px) scaleX(-1); } }
 
 /* ---------------------------------------------------------------- pup svg animations */
 .pup .pup-eye { transform-box: fill-box; transform-origin: center; animation: blink 4.2s infinite; }

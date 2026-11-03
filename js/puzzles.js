@@ -4,6 +4,7 @@
  * colour palette for yards and the wording of hint explanations.
  */
 import { Rng, decodePuzzle, generatePuzzle, encodePuzzle, hashString, RANKS } from './engine.js';
+import { TERRAINS, terrainDistance } from './terrain.js';
 
 const base = new URL('.', import.meta.url).href.replace(/js\/$/, '');
 
@@ -148,24 +149,14 @@ export async function generateAsync(n, rank, seed, deadlineMs, deterministic = f
   return { n, rank: enc.rank, puzzle: decodePuzzle(enc.p) };
 }
 
-// ---------------------------------------------------------------- colours
+// ---------------------------------------------------------------- yard terrains
 
-export const PALETTE = [
-  { name: 'rose',      fill: '#ffc2d1', deep: '#ff8fab' },
-  { name: 'sky',       fill: '#bfe3ff', deep: '#7cc4ff' },
-  { name: 'lemon',     fill: '#fff1a8', deep: '#ffdd57' },
-  { name: 'mint',      fill: '#c3f2d6', deep: '#7ddba3' },
-  { name: 'lilac',     fill: '#dccfff', deep: '#b39cff' },
-  { name: 'peach',     fill: '#ffd6b8', deep: '#ffb07c' },
-  { name: 'aqua',      fill: '#bdf0f2', deep: '#6fd8dd' },
-  { name: 'sage',      fill: '#d9ebb3', deep: '#b4d46a' },
-  { name: 'mauve',     fill: '#f0c6ec', deep: '#dd8fd6' },
-  { name: 'periwinkle',fill: '#cfd4ff', deep: '#97a1ff' },
-  { name: 'sand',      fill: '#efdfb7', deep: '#d9bd77' },
-  { name: 'coral',     fill: '#ffc9bc', deep: '#ff9a82' },
-];
+export { TERRAINS as PALETTE };
 
-/** Assign palette entries to regions so neighbouring yards never share a hue. Deterministic. */
+/**
+ * Give every region a terrain so that neighbouring yards always look clearly different
+ * (hue, saturation and lightness all count). Deterministic for a given board.
+ */
 export function assignColors(puzzle) {
   const { n, regions } = puzzle;
   const adj = Array.from({ length: n }, () => new Set());
@@ -174,30 +165,29 @@ export function assignColors(puzzle) {
     if (c + 1 < n && regions[i + 1] !== regions[i]) { adj[regions[i]].add(regions[i + 1]); adj[regions[i + 1]].add(regions[i]); }
     if (r + 1 < n && regions[i + n] !== regions[i]) { adj[regions[i]].add(regions[i + n]); adj[regions[i + n]].add(regions[i]); }
   }
-  const colorOf = new Array(n).fill(-1);
-  // visit regions in a fixed order; pick the palette index whose neighbours differ most
-  const rng = new Rng('colors-' + puzzle.n + '-' + Array.from(regions).join(''));
-  const start = rng.int(PALETTE.length);
-  for (let k = 0; k < n; k++) {
-    const used = new Set();
-    for (const q of adj[k]) if (colorOf[q] >= 0) used.add(colorOf[q]);
-    const taken = new Set(colorOf.filter(c => c >= 0));
-    let pick = -1;
-    for (let t = 0; t < PALETTE.length; t++) {
-      const ci = (start + k * 5 + t) % PALETTE.length;
-      if (!used.has(ci) && !taken.has(ci)) { pick = ci; break; }
+  const rng = new Rng('terrain-' + n + '-' + Array.from(regions).join(''));
+  const order = rng.shuffle(TERRAINS.map((_, i) => i));
+  const pick = new Array(n).fill(-1);
+  // biggest regions first so the most visible yards get the strongest contrast
+  const sizes = new Array(n).fill(0); for (let i = 0; i < n * n; i++) sizes[regions[i]]++;
+  const regOrder = Array.from({ length: n }, (_, k) => k).sort((a, b) => sizes[b] - sizes[a] || a - b);
+  for (const k of regOrder) {
+    const taken = new Set(pick.filter(x => x >= 0));
+    let best = -1, bestScore = -Infinity;
+    for (const ti of order) {
+      let score = Math.min(...[...adj[k]].filter(q => pick[q] >= 0).map(q => terrainDistance(TERRAINS[ti], TERRAINS[pick[q]])), 400);
+      if (taken.has(ti)) score -= 1000; // every yard its own terrain whenever possible
+      if (score > bestScore) { bestScore = score; best = ti; }
     }
-    if (pick < 0) for (let t = 0; t < PALETTE.length; t++) { const ci = (start + k * 5 + t) % PALETTE.length; if (!used.has(ci)) { pick = ci; break; } }
-    if (pick < 0) pick = (start + k) % PALETTE.length;
-    colorOf[k] = pick;
+    pick[k] = best;
   }
-  return colorOf.map(ci => PALETTE[ci]);
+  return pick.map(ti => TERRAINS[ti]);
 }
 
 // ---------------------------------------------------------------- hint wording
 
 export function explainStep(step, puzzle, colors) {
-  const yard = reg => `the ${colors[reg].name} yard`;
+  const yard = reg => `the ${colors[reg].label}`;
   const unit = u => u.type === 'reg' ? yard(u.idx) : u.type === 'row' ? `row ${u.idx + 1}` : `column ${u.idx + 1}`;
   const Unit = u => { const s = unit(u); return s[0].toUpperCase() + s.slice(1); };
   const w = step.why;
@@ -206,15 +196,15 @@ export function explainStep(step, puzzle, colors) {
   // "rows 2, 3 and 4" / "columns 1 and 5" when all lines are the same kind
   const linesText = lines => lines.every(l => l.type === lines[0].type) && lines.length > 1
     ? `${lines[0].type === 'row' ? 'rows' : 'columns'} ${list(lines.map(l => String(l.idx + 1)))}` : list(lines.map(unit));
-  const yardsText = regs => regs.length > 1 ? `the ${list(regs.map(r => colors[r].name))} yards` : yard(regs[0]);
+  const yardsText = regs => regs.length > 1 ? `the ${list(regs.map(r => colors[r].label))}` : yard(regs[0]);
   switch (w.kind) {
     case 'badMark': return { title: 'Oops!', text: 'One of your ✕ marks sits right where a pup belongs. Let’s clear it.' };
     case 'basic': return { title: 'Personal space', text: `A pup blocks its whole row and column, its yard, and the 8 squares around it. ${w.count === 1 ? 'One square is' : w.count + ' squares are'} blocked by pups already sitting — cross ${w.count === 1 ? 'it' : 'them'} off.` };
     case 'single':
-      if (w.unit.type === 'reg') return { title: 'Only one spot', text: `Every other square in ${yard(w.unit.idx)} is blocked, so the ${colors[w.unit.idx].name} pup has to sit here.` };
+      if (w.unit.type === 'reg') return { title: 'Only one spot', text: `Every other square in ${yard(w.unit.idx)} is blocked, so ${yard(w.unit.idx)}’s pup has to sit here.` };
       return { title: 'Only one spot', text: `${Unit(w.unit)} has just one open square left — that is where its pup goes.` };
     case 'pointing': return { title: 'Yard lock', text: `Every open square of ${yard(w.reg)} lies in ${unit(w.line)}. That yard’s pup will take ${unit(w.line)}, so no other yard can use it — cross off the rest of ${unit(w.line)}.` };
-    case 'claiming': return { title: 'Line lock', text: `The only open squares in ${unit(w.line)} belong to ${yard(w.reg)}. So the ${colors[w.reg].name} pup must sit in ${unit(w.line)}, and the yard’s squares elsewhere are out.` };
+    case 'claiming': return { title: 'Line lock', text: `The only open squares in ${unit(w.line)} belong to ${yard(w.reg)}. So ${yard(w.reg)}’s pup must sit in ${unit(w.line)}, and its other squares are out.` };
     case 'crowd': return { title: 'Too crowded', text: `${Unit(w.unit)} has only ${w.victims.length === 1 ? 'one spot' : w.victims.length + ' spots'} left. A pup on ${w.cells.length === 1 ? 'the highlighted square' : 'any of the ' + w.cells.length + ' highlighted squares'} would block all of them — so ${w.cells.length === 1 ? 'it is' : 'they are'} out.` };
     case 'subsetRegs': return { title: w.regs.length === 2 ? 'Paired yards' : 'Trio of yards', text: `${cap(yardsText(w.regs))} fit entirely inside ${linesText(w.lines)}. Those ${w.lines.length} lines are spoken for, so no other yard can use them.` };
     case 'subsetLines': return { title: w.lines.length === 2 ? 'Paired lines' : 'Trio of lines', text: `${cap(linesText(w.lines))} only have open squares in ${yardsText(w.regs)}. Those yards must supply those lines’ pups, so their squares anywhere else are out.` };

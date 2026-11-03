@@ -644,7 +644,7 @@ class App {
     el.dataset.done = '1';
     const demo = (n, regions, pups, marks, cls = '') => {
       let html = `<div class="mini-board ${cls}" style="--n:${n}">`;
-      const pal = ['#ffc2d1', '#bfe3ff', '#fff1a8', '#c3f2d6', '#dccfff', '#ffd6b8'];
+      const pal = ['#8be070', '#6fc9ff', '#ffe16e', '#ffb0c6', '#dde3f0', '#ffb169'];
       for (let i = 0; i < n * n; i++) {
         const r = (i / n) | 0, c = i % n, reg = regions[i];
         const b = (r === 0 || regions[i - n] !== reg ? ' bt' : '') + (c === 0 || regions[i - 1] !== reg ? ' bl' : '') + (r === n - 1 ? ' bb' : '') + (c === n - 1 ? ' br' : '');
@@ -698,7 +698,7 @@ class App {
   async renderGameScreen(arg) {
     if (!arg) { this.go('home'); return; }
     const screen = $('#s-game');
-    this.game = null;
+    this.game = null; this.lastCell = 0;
     screen.classList.add('loading');
     $('#board').innerHTML = '';
     $('#game-title').textContent = 'Fetching…';
@@ -733,7 +733,7 @@ class App {
       },
     });
     this.game = game;
-    game.mount($('#board'));
+    game.mount($('#board'), $('#board-frame'));
     $('#game-title').textContent = info.title;
     $('#game-sub').innerHTML = `${esc(info.subtitle || '')} · ${info.n}×${info.n} · <span title="${rankName(info.rank)}">${paws(info.rank)}</span>`;
     $('#game-sub').title = `${rankName(info.rank)} rank`;
@@ -752,8 +752,16 @@ class App {
     const r = wrap.getBoundingClientRect();
     const n = this.game.n;
     const size = Math.max(120, Math.min(r.width, r.height) - 8);
-    const cell = Math.floor(size / n);
-    board.style.setProperty('--cell', cell + 'px');
+    // the picket fence takes 0.45 of a cell on each side, but never less than 16px or more than 30px
+    let cell = size / (n + 0.9);
+    if (cell * 0.45 > 30) cell = (size - 60) / n;
+    else if (cell * 0.45 < 16) cell = (size - 32) / n;
+    cell = Math.max(16, Math.floor(cell));
+    if (cell !== this.lastCell) {
+      this.lastCell = cell;
+      board.style.setProperty('--cell', cell + 'px');
+      this.game.drawTerrain();
+    }
   }
   startTicker() {
     clearInterval(this.ticker);

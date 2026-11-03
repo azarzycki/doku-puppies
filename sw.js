@@ -1,6 +1,6 @@
 /* Pupdoku service worker: app shell cached for offline play; data files refreshed when online. */
 const VERSION = 'pupdoku-v1';
-const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/game.js', 'js/engine.js', 'js/puzzles.js', 'js/pups.js', 'js/sound.js', 'js/store.js', 'js/gen-worker.js',
+const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/game.js', 'js/engine.js', 'js/puzzles.js', 'js/pups.js', 'js/sound.js', 'js/store.js', 'js/gen-worker.js', 'js/terrain.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'data/levels.json', 'data/bank.json', 'data/daily.json'];
 
 self.addEventListener('install', e => {
