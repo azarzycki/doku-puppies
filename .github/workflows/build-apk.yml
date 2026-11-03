@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }} # secrets can't be read in a step's "if", job env can
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,9 +25,7 @@ jobs:
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
       - name: Restore the private Play upload keystore (repo secrets; skipped on forks)
-        if: ${{ secrets.UPLOAD_KEYSTORE_B64 != '' }}
-        env:
-          UPLOAD_KEYSTORE_B64: ${{ secrets.UPLOAD_KEYSTORE_B64 }}
+        if: ${{ env.UPLOAD_KEYSTORE_B64 != '' }}
         run: |
           echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
           echo "UPLOAD_KEYSTORE=$RUNNER_TEMP/upload.keystore" >> "$GITHUB_ENV"
