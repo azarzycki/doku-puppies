@@ -34,6 +34,23 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   check(!!tut, 'tutorial shows on level 1');
   check(await app(page, a => a.handleBack()), 'handleBack closes the tutorial (Android Back)');
   check(!(await app(page, a => a.handleBack())), 'handleBack returns false with nothing open');
+  // up-navigation: Home > Walks > level 1 > level 2, then the ‹ button jumps back to Walks, then Home (history collapses with it)
+  const base = await app(page, a => history.state.i);
+  await app(page, a => { a.go('walks'); a.go('game', { kind: 'level', id: 1 }); a.go('game', { kind: 'level', id: 2 }); });
+  await page.waitForTimeout(400);
+  check((await app(page, a => history.state.i)) === base + 3, 'history index counts the screens visited');
+  await app(page, a => a.closeAllDialogs()); // the level intro; the ‹ button closes dialogs first
+  await page.locator('#s-game [data-back]').first().click(); await page.waitForTimeout(500);
+  check((await app(page, a => a.current + ':' + history.state.i)) === 'walks:' + (base + 1), 'the ‹ button on a level goes up to Walks, collapsing the two levels');
+  await page.locator('#s-walks [data-back]').click(); await page.waitForTimeout(500);
+  check((await app(page, a => a.current)) === 'home', 'the ‹ button on Walks goes home');
+  await app(page, a => a.go('settings')); await page.waitForTimeout(200);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(500);
+  check((await app(page, a => a.current)) === 'home', 'Escape goes up from Settings to Home');
+  // back to level 1 for the pointer checks below
+  await app(page, a => a.go('game', { kind: 'level', id: 1 }));
+  await page.waitForFunction(() => window.dokuPuppies.game && window.dokuPuppies.game.cellEls);
+  await app(page, a => a.closeAllDialogs());
   // real pointer input: tap crosses off, tap again clears, double-tap seats a pup (EMPTY=0, MARK=1, PUP=2)
   const pick = await app(page, a => { const g = a.game, n = g.n, sol = g.puzzle.solution; let good = -1, bad = -1; for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) { const i = r * n + c; if (g.given[i] || g.cells[i] !== 0) continue; if (sol[r] === c && good < 0) good = i; if (sol[r] !== c && bad < 0) bad = i; } return { good, bad }; });
   const cellOf = (page, i) => app(page, (a, i) => a.game.cells[i], i);

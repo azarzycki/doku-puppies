@@ -85,7 +85,7 @@ Optional hardening: set `RECAPTCHA_SITE_KEY` in `js/store.js` to turn on App Che
 
 ## Android app
 
-`android/` is a bare WebView shell pointing at the hosted page, so updates to the game never need a new APK. It is a normal launcher app (phones and tablets, any orientation) and also registers a Leanback entry so it shows up on Android TV / Google TV, where the page is fully playable with the remote's D-pad. The Back key closes dialogs / goes back a screen before leaving the app.
+`android/` is a bare WebView shell pointing at the hosted page, so updates to the game never need a new APK. It is a normal launcher app (phones and tablets, any orientation) and also registers a Leanback entry so it shows up on Android TV / Google TV, where the page is fully playable with the remote's D-pad. The Back key closes dialogs / goes back a screen before leaving the app; the ‹ button at the top of a screen goes up to its parent (a level returns to Walks, the rest to Home).
 
 The `Build Android app` workflow builds and signs it on every push that touches `android/` and attaches `app-release.apk` (sideloading) and `app-release.aab` (Google Play upload) to the `latest` release. Build locally with `cd android && gradle assembleRelease bundleRelease` (Android SDK platform 36 + build-tools 36.0.0, Gradle 8.14, JDK 17). It targets Android 16 (API 36), which Google Play requires for new apps, so it is drawn edge-to-edge (the activity pads the page out from under the system bars) and uses the predictive-back callback.
 

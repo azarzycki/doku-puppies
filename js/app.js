@@ -76,7 +76,9 @@ class App {
     this.renderMascotEverywhere();
     await loadLevels().catch(e => { this.toast('Could not load levels — check your connection'); console.error(e); });
     this.rollDailyTricks();
-    this.route(history.state || this.initialRoute(), true);
+    this.stack = []; // our own copy of the history entries, so "up" can jump straight to a parent screen
+    if (!history.state || history.state.i == null) history.replaceState({ ...(history.state || this.initialRoute()), i: 0 }, '');
+    this.route(history.state, true);
     this.store.connect();
     this.registerSW();
     window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); this.deferredInstall = e; $('#install-btn')?.classList.remove('hidden'); });
@@ -122,7 +124,7 @@ class App {
       const a = e.target.closest('[data-go]');
       if (a) { e.preventDefault(); sfx.tap(); this.go(a.dataset.go, a.dataset.arg ? JSON.parse(a.dataset.arg) : undefined); }
       const b = e.target.closest('[data-back]');
-      if (b) { e.preventDefault(); sfx.tap(); this.back(); }
+      if (b) { e.preventDefault(); sfx.tap(); this.up(); }
     });
     document.addEventListener('keydown', e => this.onKey(e));
     document.addEventListener('pointerdown', () => { if (this.kb) { this.kb = false; document.body.classList.remove('kb'); } }, { capture: true });
@@ -131,11 +133,28 @@ class App {
     window.addEventListener('resize', () => this.layoutBoard());
   }
   go(screen, arg) {
-    const state = { s: screen, a: arg };
+    const i = ((history.state && history.state.i) ?? -1) + 1;
+    const state = { s: screen, a: arg, i };
+    this.stack.length = i; this.stack[i] = state;
     history.pushState(state, '', '#' + screen);
     this.route(state, false);
   }
-  back() { if (this.dialogStack.length) { this.closeDialog(); return; } if (history.length > 1 && history.state && history.state.s !== 'home') history.back(); else this.go('home'); }
+  /** the screen the top-left ‹ button leads to: a puzzle goes to the list it came from, everything else goes home */
+  parentOf(state) {
+    if (state.s !== 'game') return 'home';
+    const k = state.a?.kind;
+    return k === 'level' ? 'walks' : k === 'daily' ? 'daily' : k === 'free' ? 'free' : k === 'event' ? 'event' : 'home';
+  }
+  /** ‹ button / Escape: close a dialog, else go up to the parent screen. If that screen is already in the history
+   *  (Home › Walks › level 3 › level 4 › …) we jump back to it so the system Back key still leaves the app from Home. */
+  up() {
+    if (this.dialogStack.length) { this.closeDialog(); return; }
+    const cur = history.state || { s: this.current, i: 0 };
+    const parent = this.parentOf(cur);
+    const i = cur.i ?? 0;
+    for (let j = i - 1; j >= 0; j--) { const e = this.stack[j]; if (e && e.s === parent) { history.go(j - i); return; } }
+    this.go(parent);
+  }
   /** Android wrapper asks the page first on the Back key: true = handled here (a dialog closed) */
   handleBack() {
     const top = this.dialogStack[this.dialogStack.length - 1];
@@ -146,6 +165,7 @@ class App {
   }
   route(state, fromHistory) {
     if (this.dialogStack.length) this.closeAllDialogs();
+    if (state.i != null) this.stack[state.i] = state;
     const s = state.s || 'home';
     if (this.current === 'game' && s !== 'game') { this.game?.pause(); this.saveGame(); }
     this.current = s;
@@ -178,7 +198,7 @@ class App {
       if (!this.kb) { this.kb = true; document.body.classList.add('kb'); }
     }
     const inInput = /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || '');
-    if (k === 'Escape' || k === 'GoBack' || (k === 'Backspace' && !inInput)) { e.preventDefault(); this.back(); return; }
+    if (k === 'Escape' || k === 'GoBack' || (k === 'Backspace' && !inInput)) { e.preventDefault(); this.up(); return; }
     if (inInput) return;
     const game = this.current === 'game' && this.game;
     const onBoard = game && document.activeElement && document.activeElement.classList.contains('cell');
