@@ -20,7 +20,7 @@ export const MARK_STYLES = {
     <g transform="rotate(45 50 50)"><g fill="#fff4dc" stroke="#b8863f" stroke-width="3"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g><rect x="28" y="45" width="44" height="4" rx="2" fill="#fff" opacity=".85"/></g>
     <g transform="rotate(-45 50 50)"><g fill="#fff4dc" stroke="#b8863f" stroke-width="3"><rect x="20" y="42" width="60" height="16" rx="8"/><circle cx="20" cy="42" r="9"/><circle cx="20" cy="58" r="9"/><circle cx="80" cy="42" r="9"/><circle cx="80" cy="58" r="9"/></g><rect x="28" y="45" width="44" height="4" rx="2" fill="#fff" opacity=".85"/></g>
     <circle class="mark-shine" cx="50" cy="50" r="6" fill="#fff" opacity=".9"/></svg>`,
-  x: `<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true"><path d="M24 24 L76 76 M76 24 L24 76" stroke="#fff" stroke-width="24" stroke-linecap="round" fill="none" opacity=".9"/><path d="M24 24 L76 76 M76 24 L24 76" stroke="#4a3528" stroke-width="13" stroke-linecap="round" fill="none"/><path d="M28 24 L48 44" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".7"/></svg>`,
+  x: `<svg class="mark mark-x" viewBox="0 0 100 100" aria-hidden="true"><path d="M18 18 L82 82 M82 18 L18 82" stroke="#fff" stroke-width="24" stroke-linecap="round" fill="none" opacity=".9"/><path d="M18 18 L82 82 M82 18 L18 82" stroke="#4a3528" stroke-width="13" stroke-linecap="round" fill="none"/><path d="M22 18 L46 42" stroke="#fff" stroke-width="3.5" stroke-linecap="round" opacity=".7"/></svg>`,
   paw: `<svg class="mark mark-paw" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="#fff" stroke="#e5484d" stroke-width="9"/><g fill="#4a3528"><ellipse cx="50" cy="60" rx="15" ry="13"/><circle cx="31" cy="46" r="7.5"/><circle cx="43" cy="35" r="7.5"/><circle cx="57" cy="35" r="7.5"/><circle cx="69" cy="46" r="7.5"/></g><path d="M23 77 L77 23" stroke="#e5484d" stroke-width="9" stroke-linecap="round"/></svg>`,
 };
 const markSvg = style => MARK_STYLES[style] || MARK_STYLES.bones;
@@ -59,10 +59,11 @@ export class Game {
 
   // ---------------------------------------------------------------- DOM
 
-  mount(boardEl, frameEl) {
+  mount(boardEl, frameEl, trayEl) {
     this.el = boardEl;
     this.listeners = new AbortController();
     this.frameEl = frameEl || boardEl.parentElement;
+    this.trayEl = trayEl || null;
     boardEl.innerHTML = '';
     boardEl.style.setProperty('--n', this.n);
     boardEl.setAttribute('role', 'grid');
@@ -91,8 +92,42 @@ export class Game {
     boardEl.classList.toggle('coords', !!this.settings.showCoords);
     this.drawTerrain();
     for (let i = 0; i < this.N; i++) this.paintCell(i, false);
+    this.mountTray();
     this.bindPointer();
     this.updateAria();
+  }
+
+  /** the row of pup chips above the fence: one per yard, left to right by where the yard starts */
+  mountTray() {
+    const tray = this.trayEl; if (!tray) return;
+    tray.innerHTML = ''; tray.classList.remove('won');
+    const { n, puzzle } = this;
+    const minCol = new Array(n).fill(Infinity), minRow = new Array(n).fill(Infinity);
+    for (let i = 0; i < this.N; i++) { const k = puzzle.regions[i]; minCol[k] = Math.min(minCol[k], i % n); minRow[k] = Math.min(minRow[k], (i / n) | 0); }
+    const order = Array.from({ length: n }, (_, k) => k).sort((a, b) => minCol[a] - minCol[b] || minRow[a] - minRow[b] || a - b);
+    this.trayEls = new Array(n);
+    for (const k of order) {
+      const d = document.createElement('div');
+      d.className = 'yard-chip off';
+      d.style.setProperty('--rc', this.colors[k].fill); d.style.setProperty('--rd', this.colors[k].deep);
+      d.title = this.colors[k].label;
+      d.innerHTML = `<div class="yard-pup">${this.tokenSvg}</div>`;
+      tray.appendChild(d); this.trayEls[k] = d;
+    }
+    this.updateTray(false);
+  }
+  updateTray(animate = true) {
+    if (!this.trayEls) return;
+    const seated = new Uint8Array(this.n);
+    for (let i = 0; i < this.N; i++) if (this.cells[i] === PUP) seated[this.puzzle.regions[i]] = 1;
+    let home = 0;
+    for (let k = 0; k < this.n; k++) {
+      const d = this.trayEls[k], on = !!seated[k]; if (on) home++;
+      if (d.classList.contains('on') === on) continue;
+      d.classList.toggle('on', on); d.classList.toggle('off', !on);
+      if (on && animate) { d.classList.remove('pop'); void d.offsetWidth; d.classList.add('pop'); }
+    }
+    this.trayEl.setAttribute('aria-label', `${home} of ${this.n} yards have a pup`);
   }
 
   /** swap the mark artwork on a live board */
@@ -204,7 +239,7 @@ export class Game {
     this.changed();
   }
   pushHistory(batch) { if (batch.length) { this.history.push(batch); this.changed(); } }
-  changed() { this.hooks.onChange && this.hooks.onChange(this); }
+  changed() { this.updateTray(); this.hooks.onChange && this.hooks.onChange(this); }
 
   /** single tap: empty <-> crossed off; a pup is sent home */
   tap(i) {
@@ -296,6 +331,7 @@ export class Game {
     this.clearHint(false);
     if (this.el) {
       this.el.classList.remove('won');
+      if (this.trayEl) { this.trayEl.classList.remove('won'); this.trayEl.querySelectorAll('.yard-chip').forEach(d => { d.style.animationDelay = ''; }); }
       for (const d of this.cellEls) {
         d.classList.remove('wrong', 'bad-mark', 'fetched');
         const tok = d.querySelector('.token');
@@ -338,6 +374,7 @@ export class Game {
   }
   celebrate() {
     this.el.classList.add('won');
+    if (this.trayEl) { this.trayEl.classList.add('won'); this.trayEl.querySelectorAll('.yard-chip').forEach((d, j) => { d.style.animationDelay = (j * 90) + 'ms'; }); }
     let k = 0;
     for (let i = 0; i < this.N; i++) if (this.cells[i] === PUP) {
       const tok = this.cellEls[i].querySelector('.token');

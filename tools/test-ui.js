@@ -64,8 +64,11 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   p = await centre(pick.good);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   check((await cellOf(page, pick.good)) === 2, 'double-tap seats a pup');
+  const tray = await app(page, a => { const g = a.game; const chips = Array.from(document.querySelectorAll('#yard-tray .yard-chip')); const yards = new Set(); g.cells.forEach((v, i) => { if (v === 2) yards.add(g.puzzle.regions[i]); }); return { chips: chips.length, lit: chips.filter(c => c.classList.contains('on')).length, n: g.n, yardsWithPup: yards.size }; });
+  check(tray.chips === tray.n && tray.lit === tray.yardsWithPup && tray.lit >= 2, 'yard tray: one chip per yard, lit for the yards that have a pup (' + JSON.stringify(tray) + ')');
   const undone = await app(page, (a, i) => { a.game.undo(); return a.game.cells[i]; }, pick.good);
   check(undone === 0, 'undo after a double-tap returns the square to empty');
+  check((await app(page, a => document.querySelectorAll('#yard-tray .yard-chip.on').length)) === tray.lit - 1, 'undo greys that yard chip again');
   await page.waitForTimeout(450);
   p = await centre(pick.good);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);

@@ -727,7 +727,7 @@ class App {
     const seq = this.gameSeq = (this.gameSeq || 0) + 1;
     this.lastCell = 0;
     screen.classList.add('loading');
-    $('#board').innerHTML = '';
+    $('#board').innerHTML = ''; $('#yard-tray').innerHTML = '';
     $('#game-title').textContent = 'Fetching…';
     $('#game-sub').textContent = '';
     this.hideHint();
@@ -769,7 +769,7 @@ class App {
       },
     });
     this.game = game;
-    game.mount($('#board'), $('#board-frame'));
+    game.mount($('#board'), $('#board-frame'), $('#yard-tray'));
     $('#game-title').textContent = info.title;
     $('#game-sub').innerHTML = `${esc(info.subtitle || '')} · ${info.n}×${info.n} · <span title="${rankName(info.rank)}">${paws(info.rank)}</span>`;
     $('#game-sub').title = `${rankName(info.rank)} rank`;
@@ -787,12 +787,18 @@ class App {
     if (!board || !this.game || this.current !== 'game') return;
     const r = wrap.getBoundingClientRect();
     const n = this.game.n;
-    const size = Math.max(120, Math.min(r.width, r.height) - 8);
     // the picket fence takes 0.45 of a cell on each side, but never less than 16px or more than 30px
-    let cell = size / (n + 0.9);
-    if (cell * 0.45 > 30) cell = (size - 60) / n;
-    else if (cell * 0.45 < 16) cell = (size - 32) / n;
-    cell = Math.max(16, Math.floor(cell));
+    const fit = (w, h) => {
+      const size = Math.max(120, Math.min(w, h) - 8);
+      let cell = size / (n + 0.9);
+      if (cell * 0.45 > 30) cell = (size - 60) / n;
+      else if (cell * 0.45 < 16) cell = (size - 32) / n;
+      return Math.max(16, Math.floor(cell));
+    };
+    // the yard tray above the fence is sized from a first fit, then the board takes what is left below it
+    const chip = Math.min(60, Math.max(28, Math.round(fit(r.width, r.height) * .72)));
+    $('#board-stack').style.setProperty('--chip-size', chip + 'px');
+    const cell = fit(r.width, r.height - chip - 8);
     if (cell !== this.lastCell) {
       this.lastCell = cell;
       board.style.setProperty('--cell', cell + 'px');

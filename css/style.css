@@ -147,7 +147,7 @@ a.btn { text-decoration: none; }
 .loader { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; flex-direction: column; gap: 6px; font-weight: 800; color: var(--ink-2); }
 .loader .mascot-face { width: 90px; height: 100px; animation: wiggle 1s ease-in-out infinite; }
 .loader .mascot-face svg { width: 100%; height: 100%; }
-.screen.game.loading .loader { display: flex; } .screen.game.loading #board { visibility: hidden; }
+.screen.game.loading .loader { display: flex; } .screen.game.loading #board, .screen.game.loading #yard-tray { visibility: hidden; }
 .side { display: flex; flex-direction: column; gap: 10px; }
 .toolbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .tool { background: var(--card); border-radius: 16px; box-shadow: var(--shadow); padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 0; transition: transform .15s var(--ease-pop); min-height: 64px; }
@@ -155,6 +155,16 @@ a.btn { text-decoration: none; }
 .t-ico { font-size: 1.5rem; line-height: 1.1; } .t-lbl { font-weight: 800; font-size: .85rem; } .t-sub { font-size: .7rem; color: var(--muted); }
 #btn-sniff .t-ico { display: inline-block; animation: sniff 2.8s ease-in-out infinite; }
 @keyframes sniff { 0%, 100% { transform: none; } 10% { transform: translate(-2px, 1px) rotate(-8deg); } 20% { transform: translate(2px, 1px) rotate(8deg); } 30% { transform: none; } }
+
+/* yard tray: one pup chip per yard above the fence, grey until a pup sits in that yard */
+.board-stack { display: flex; flex-direction: column; align-items: center; gap: 8px; --chip-size: 40px; }
+.yard-tray { display: flex; justify-content: center; gap: calc(var(--chip-size) * .18); min-height: var(--chip-size); }
+.yard-chip { position: relative; width: var(--chip-size); height: var(--chip-size); border-radius: 30%; background: linear-gradient(160deg, var(--rc), var(--rd)); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .12), 0 3px 6px rgba(90, 50, 30, .18); display: grid; place-items: center; transition: filter .35s, opacity .35s, transform .35s var(--ease-pop); }
+.yard-chip .yard-pup { width: 84%; height: 84%; } .yard-chip svg { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 1px rgba(0, 0, 0, .18)); }
+.yard-chip.off { filter: grayscale(1); opacity: .42; transform: scale(.9); }
+.yard-chip.pop { animation: chip-pop .5s var(--ease-pop); }
+@keyframes chip-pop { 0% { transform: scale(.6) rotate(-12deg); } 60% { transform: scale(1.2) rotate(4deg); } 100% { transform: none; } }
+.yard-tray.won .yard-chip { animation: jump .7s var(--ease-pop) 2; }
 
 /* board: a fenced yard. The terrain SVG (yards, fence, idle sprites) sits under the transparent grid. */
 .board-frame { position: relative; padding: var(--fence, 14px); border-radius: 16px; filter: drop-shadow(0 14px 22px rgba(90, 50, 30, .22)); }
@@ -165,8 +175,8 @@ a.btn { text-decoration: none; }
 .cell-inner { transition: background .25s; }
 @keyframes cell-in { from { transform: scale(.4); opacity: 0; } }
 .cell-inner { position: absolute; inset: 0; display: grid; place-items: center; }
-.cell .mark { position: absolute; width: 64%; height: 64%; opacity: 0; transform: scale(.3); transition: opacity .15s, transform .25s var(--ease-pop); pointer-events: none; }
-.cell .mark.mark-x { width: 56%; height: 56%; }
+.cell .mark { position: absolute; width: 80%; height: 80%; opacity: 0; transform: scale(.3); transition: opacity .15s, transform .25s var(--ease-pop); pointer-events: none; }
+.cell .mark.mark-x { width: 76%; height: 76%; }
 .cell.is-mark .mark { opacity: 1; transform: scale(1); }
 .cell.is-mark .mark.mark-bones .mark-shine { animation: shine 2.8s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
 @keyframes shine { 0%, 70%, 100% { transform: scale(1); opacity: .9; } 80% { transform: scale(1.8); opacity: 1; } 90% { transform: scale(.6); opacity: .6; } }
