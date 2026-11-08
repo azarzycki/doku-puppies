@@ -168,6 +168,7 @@ class App {
     if (state.i != null) this.stack[state.i] = state;
     const s = state.s || 'home';
     if (this.current === 'game' && s !== 'game') this.teardownGame();
+    if (this.updateReady && s !== 'game') { this.updateReady = false; this.applyUpdate(); return; }
     this.current = s;
     for (const el of this.screens) el.classList.toggle('active', el.id === 's-' + s);
     this.render(s, state.a);
@@ -997,7 +998,31 @@ class App {
 
   registerSW() {
     if (!('serviceWorker' in navigator) || location.protocol === 'file:') return;
-    navigator.serviceWorker.register(new URL('../sw.js', import.meta.url)).catch(() => {});
+    const sw = navigator.serviceWorker;
+    if (sessionStorage.getItem('dokupuppies.updated')) { sessionStorage.removeItem('dokupuppies.updated'); setTimeout(() => this.toast('Doku Puppies updated 🐾'), 600); }
+    sw.register(new URL('../sw.js', import.meta.url)).then(reg => {
+      // a session served from the cache while offline checks for a newer site once the network is back, or the app is brought forward
+      const check = () => { if (navigator.onLine) reg.update().catch(() => {}); };
+      window.addEventListener('online', check);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+    }).catch(() => {});
+    // each deploy ships a new worker version; when it takes control the page is running old code, so reload it once
+    let hadController = !!sw.controller;
+    sw.addEventListener('controllerchange', () => {
+      if (!hadController) { hadController = true; return; } // the very first install claiming the page is not an update
+      this.onNewVersion();
+    });
+  }
+  /** reload right away unless a board is in play; then wait until the player leaves it (route() does the reload) */
+  onNewVersion() {
+    const busy = this.dialogStack.length > 0 || (this.current === 'game' && this.game && !this.game.done && !this.game.isFresh());
+    if (busy && !this.updateReady) { this.updateReady = true; this.toast('An update is ready — it loads when you leave this board 🐾', 3000); return; }
+    this.applyUpdate();
+  }
+  applyUpdate() {
+    this.teardownGame(); // saves the board; the store flushes on pagehide
+    try { sessionStorage.setItem('dokupuppies.updated', '1'); } catch {}
+    location.reload();
   }
 }
 

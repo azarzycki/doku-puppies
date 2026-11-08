@@ -1,5 +1,7 @@
-/* Doku Puppies service worker: app shell cached for offline play; data files refreshed when online. */
+/* Doku Puppies service worker: the app shell (code + puzzle data) is cached for offline play. Each deploy ships a new
+ * VERSION, so a new worker re-fetches everything on install and the page reloads itself once the worker takes over. */
 const VERSION = 'dokupuppies-v1';
+const NETWORK_WAIT_MS = 3000; // on a connection that is up but going nowhere, serve the cached copy after this long
 const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/game.js', 'js/engine.js', 'js/puzzles.js', 'js/pups.js', 'js/sound.js', 'js/store.js', 'js/gen-worker.js', 'js/terrain.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'data/levels.json', 'data/bank.json', 'data/daily.json'];
 
@@ -15,11 +17,14 @@ self.addEventListener('fetch', e => {
   const sameOrigin = url.origin === location.origin;
   const isFirebase = url.hostname === 'www.gstatic.com';
   if (!sameOrigin && !isFirebase) return;
-  // network first for the page + data (so updates land), cache first for everything else
-  const networkFirst = sameOrigin && (e.request.mode === 'navigate' || url.pathname.endsWith('.json') || url.pathname.endsWith('index.html'));
+  // network first for the page itself (a stale install gets fresh HTML as soon as it is online), cache first for everything else
+  const networkFirst = sameOrigin && (e.request.mode === 'navigate' || url.pathname.endsWith('index.html'));
   if (networkFirst) {
-    e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); return r; })
-      .catch(() => caches.match(e.request).then(r => r || caches.match('./'))));
+    const fromCache = () => caches.match(e.request).then(r => r || caches.match('./'));
+    const net = fetch(e.request).then(r => { if (r.ok) { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; });
+    net.catch(() => {}); // a slow reply that lands after we answered from the cache still updates the cache above
+    const late = new Promise(resolve => setTimeout(resolve, NETWORK_WAIT_MS, null));
+    e.respondWith(Promise.race([net.catch(() => null), late]).then(r => r || fromCache().then(c => c || net)));
   } else {
     e.respondWith(caches.match(e.request).then(hit => hit || fetch(e.request).then(r => { if (r.ok || r.type === 'opaque') { const copy = r.clone(); caches.open(VERSION).then(c => c.put(e.request, copy)); } return r; })));
   }
