@@ -71,6 +71,29 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   check((await cellOf(page, pick.good)) === 0, 'tapping a pup sends it home');
+  // leaving a level must take its board out of play: a board left listening on #board judged later taps against its
+  // own solution, so correct pups on the next level rang as mistakes and "Out of hearts" came up for the wrong game
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(450); // one mark so level 1 is saved as in progress
+  await page.locator('#s-game [data-back]').first().click(); await page.waitForTimeout(500);
+  check(await app(page, a => a.current === 'walks' && !a.game), 'the ‹ button tears the board down');
+  check(await app(page, a => !!a.profile.progress.L1), 'an unfinished level is saved on the way out');
+  await app(page, a => a.go('game', { kind: 'level', id: 2 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 2; });
+  await app(page, a => a.closeAllDialogs()); await page.waitForTimeout(700);
+  const l1 = await page.evaluate(() => import('./js/puzzles.js').then(m => m.getLevel(1)).then(x => x.puzzle.solution));
+  const targets = await app(page, (a, l1) => { const g = a.game, n = g.n, sol = g.puzzle.solution, out = []; for (let r = 0; r < n && out.length < 3; r++) { const i = r * n + sol[r]; if (!g.given[i] && g.cells[i] === 0 && l1[r] !== sol[r]) out.push(i); } return out; }, l1);
+  check(targets.length === 3, 'level 2 has three correct squares that are wrong on level 1 (' + targets.length + ')');
+  for (const i of targets) { const q = await centre(i); await page.mouse.click(q.x, q.y); await page.waitForTimeout(90); await page.mouse.click(q.x, q.y); await page.waitForTimeout(450); }
+  await page.waitForTimeout(900); // the fail card comes 800 ms after a third mistake
+  const l2 = await app(page, (a, t) => ({ pups: t.filter(i => a.game.cells[i] === 2).length, hearts: a.game.hearts, fail: !!document.querySelector('.dialog.fail, .fail') }), targets);
+  check(l2.pups === 3 && l2.hearts === 3 && !l2.fail, 'correct pups on the next level are not judged by the board that was left (' + JSON.stringify(l2) + ')');
+  const clock = await app(page, a => { a.game.restart(); return a.game.time; });
+  check(clock < 100, 'Start over resets the clock (' + Math.round(clock) + ' ms)');
+  await app(page, a => a.go('game', { kind: 'level', id: 1 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 1; });
+  await page.waitForTimeout(500);
+  const back = { mark: await cellOf(page, pick.good), l2kept: await app(page, a => !!a.profile.progress.L2) };
+  check(back.mark === 1 && !back.l2kept, 'level 1 comes back with its saved mark; the untouched level 2 board was not kept (' + JSON.stringify(back) + ')');
   // wrong pup costs a heart and becomes a mark
   const wrong = await app(page, a => { const g = a.game, n = g.n; const sol = g.puzzle.solution; let i = -1; for (let r = 0; r < n && i < 0; r++) for (let c = 0; c < n; c++) if (sol[r] !== c && !g.given[r * n + c]) { i = r * n + c; break; } g.setCursor(i); g.act('pup'); return g.hearts; });
   check(wrong === 2, 'wrong placement costs a heart (' + wrong + ')');

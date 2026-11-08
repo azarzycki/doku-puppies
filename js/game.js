@@ -49,8 +49,9 @@ export class Game {
     this.elapsed = 0; this.running = false; this.lastTick = 0;
     this.history = [];
     this.hint = null;
-    this.done = false; this.failed = false;
+    this.done = false; this.failed = false; this.destroyed = false;
     this.cursor = -1;
+    this.timers = {}; // pending mistake / fail / win callbacks, cancelled by destroy()
     this.tokenSvg = pupSvg(this.pupSpec, { cls: 'token-pup' });
     this.tokenSadSvg = pupSvg(this.pupSpec, { cls: 'token-pup', mood: 'sad' });
     if (opts.resume) this.restore(opts.resume);
@@ -60,6 +61,7 @@ export class Game {
 
   mount(boardEl, frameEl) {
     this.el = boardEl;
+    this.listeners = new AbortController();
     this.frameEl = frameEl || boardEl.parentElement;
     boardEl.innerHTML = '';
     boardEl.style.setProperty('--n', this.n);
@@ -133,6 +135,7 @@ export class Game {
 
   bindPointer() {
     const el = this.el;
+    const on = (type, fn) => el.addEventListener(type, fn, { signal: this.listeners.signal });
     let drag = null; // { mode: 'mark'|'erase', moved:false, start:i, timer, batch:[] }
     let lastTap = null; // { i, t, wasPup } for double-tap detection
     const cellAt = (x, y) => {
@@ -140,7 +143,7 @@ export class Game {
       const c = t && t.closest && t.closest('.cell');
       return c && c.parentElement === el ? Number(c.dataset.i) : -1;
     };
-    el.addEventListener('pointerdown', e => {
+    on('pointerdown', e => {
       if (this.done || this.failed) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       const i = cellAt(e.clientX, e.clientY);
@@ -154,7 +157,7 @@ export class Game {
         drag.timer = setTimeout(() => { if (drag && !drag.moved) { drag.longPressed = true; this.tryPlacePup(i); } }, 420);
       }
     });
-    el.addEventListener('pointermove', e => {
+    on('pointermove', e => {
       if (!drag || !drag.mode) return;
       const i = cellAt(e.clientX, e.clientY);
       if (i < 0 || i === drag.start && !drag.moved) return;
@@ -177,9 +180,9 @@ export class Game {
       lastTap = { i, t: now, wasPup: this.cells[i] === PUP };
       this.tap(i);
     };
-    el.addEventListener('pointerup', finish);
-    el.addEventListener('pointercancel', () => { if (drag) { clearTimeout(drag.timer); if (drag.batch.length) this.pushHistory(drag.batch); drag = null; } });
-    el.addEventListener('contextmenu', e => e.preventDefault());
+    on('pointerup', finish);
+    on('pointercancel', () => { if (drag) { clearTimeout(drag.timer); if (drag.batch.length) this.pushHistory(drag.batch); drag = null; } });
+    on('contextmenu', e => e.preventDefault());
   }
   paintDrag(drag, i) {
     if (this.given[i]) return;
@@ -258,7 +261,9 @@ export class Game {
     sfx.wrong();
     if (this.settings.haptics) haptic([40, 40, 40]);
     this.clearHint(true);
-    setTimeout(() => {
+    clearTimeout(this.timers.mistake);
+    this.timers.mistake = setTimeout(() => {
+      this.timers.mistake = null;
       d.classList.remove('wrong');
       tok.innerHTML = '';
       if (this.cells[i] !== MARK) { this.pushHistory([{ i, from: this.cells[i], to: MARK }]); this.cells[i] = MARK; this.marksMade++; }
@@ -266,7 +271,7 @@ export class Game {
       d.classList.add('bad-mark'); setTimeout(() => d.classList.remove('bad-mark'), 900);
     }, 650);
     this.hooks.onMistake && this.hooks.onMistake(this);
-    if (this.hearts === 0) { this.failed = true; this.pause(); setTimeout(() => this.hooks.onFail && this.hooks.onFail(this), 800); }
+    if (this.hearts === 0) { this.failed = true; this.pause(); this.timers.fail = setTimeout(() => { this.timers.fail = null; this.hooks.onFail && this.hooks.onFail(this); }, 800); }
     this.changed();
   }
 
@@ -283,11 +288,21 @@ export class Game {
   }
 
   restart() {
+    clearTimeout(this.timers.mistake); this.timers.mistake = null;
     for (let i = 0; i < this.N; i++) if (!this.given[i]) this.cells[i] = EMPTY;
     this.hearts = this.maxHearts; this.mistakes = 0; this.history = []; this.failed = false; this.done = false;
-    this.hintsUsed = 0; this.freeHintsUsed = 0; this.fetched = 0; this.elapsed = 0;
+    this.hintsUsed = 0; this.freeHintsUsed = 0; this.fetched = 0;
+    this.elapsed = 0; this.running = false; this.lastTick = 0; // the clock starts again with the first move
     this.clearHint(false);
-    if (this.el) for (let i = 0; i < this.N; i++) this.paintCell(i, false);
+    if (this.el) {
+      this.el.classList.remove('won');
+      for (const d of this.cellEls) {
+        d.classList.remove('wrong', 'bad-mark', 'fetched');
+        const tok = d.querySelector('.token');
+        tok.innerHTML = ''; tok.classList.remove('jump', 'drop'); tok.style.animationDelay = '';
+      }
+      for (let i = 0; i < this.N; i++) this.paintCell(i, false);
+    }
     this.changed();
   }
 
@@ -299,8 +314,27 @@ export class Game {
     this.clearHint(false);
     const stars = 3 - (this.mistakes > 0 ? 1 : 0) - (this.hintsUsed > 0 ? 1 : 0);
     this.celebrate();
-    setTimeout(() => this.hooks.onWin && this.hooks.onWin(this, { time: this.elapsed, mistakes: this.mistakes, hints: this.hintsUsed, fetched: this.fetched, stars }), 300);
+    const result = { time: this.elapsed, mistakes: this.mistakes, hints: this.hintsUsed, fetched: this.fetched, stars };
+    this.timers.win = setTimeout(() => { this.timers.win = null; this.hooks.onWin && this.hooks.onWin(this, result); }, 300);
+    this.pendingWin = result;
     return true;
+  }
+
+  /**
+   * Take this board out of play: drop the pointer listeners it put on the shared board element and cancel its
+   * pending callbacks. A board that was left listening judged every later tap against its own solution, so a
+   * level opened after it collected phantom mistakes and showed the "Out of hearts" card for the wrong game.
+   * A win that was still on its 300 ms fanfare delay is delivered now so the solve is not lost.
+   */
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.pause();
+    this.listeners?.abort();
+    for (const k of Object.keys(this.timers)) clearTimeout(this.timers[k]);
+    const win = this.timers.win ? this.pendingWin : null;
+    this.timers = {};
+    if (win) this.hooks.onWin && this.hooks.onWin(this, win);
   }
   celebrate() {
     this.el.classList.add('won');

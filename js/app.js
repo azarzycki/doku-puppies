@@ -167,7 +167,7 @@ class App {
     if (this.dialogStack.length) this.closeAllDialogs();
     if (state.i != null) this.stack[state.i] = state;
     const s = state.s || 'home';
-    if (this.current === 'game' && s !== 'game') { this.game?.pause(); this.saveGame(); }
+    if (this.current === 'game' && s !== 'game') this.teardownGame();
     this.current = s;
     for (const el of this.screens) el.classList.toggle('active', el.id === 's-' + s);
     this.render(s, state.a);
@@ -722,7 +722,9 @@ class App {
   async renderGameScreen(arg) {
     if (!arg) { this.go('home'); return; }
     const screen = $('#s-game');
-    this.game = null; this.lastCell = 0;
+    this.teardownGame(); // a previous board (Next level, deep link, history) must stop listening before the new one mounts
+    const seq = this.gameSeq = (this.gameSeq || 0) + 1;
+    this.lastCell = 0;
     screen.classList.add('loading');
     $('#board').innerHTML = '';
     $('#game-title').textContent = 'Fetching…';
@@ -735,11 +737,20 @@ class App {
       else if (arg.kind === 'free') info = await getFreePuzzle(arg.n, arg.rank, this.freeSeen || (this.freeSeen = new Set()));
       else if (arg.kind === 'event') { const ev = EVENTS.find(e => e.id === arg.id); const year = Number(eventKey(ev).split('-')[1]); info = await getEventPuzzle(ev, year, arg.index); }
     } catch (e) { console.error(e); }
+    if (seq !== this.gameSeq || this.current !== 'game') return; // navigated away, or another puzzle was requested, while loading
     screen.classList.remove('loading');
     if (!info) { this.toast('Could not fetch that puzzle 🐾'); this.go('home'); return; }
     if (info.bankId) this.freeSeen.add(info.bankId);
-    if (this.current !== 'game') return; // navigated away while loading
     this.startGame(info, arg);
+  }
+  /** save and dispose of the board on screen; after this nothing from it can fire (taps, hearts, timers, the fail card) */
+  teardownGame() {
+    clearTimeout(this.saveTimer);
+    const g = this.game; if (!g) return;
+    g.pause();
+    this.saveGame();
+    g.destroy();
+    this.game = null; this.gameInfo = null; this.gameArg = null;
   }
 
   startGame(info, arg) {
@@ -865,7 +876,7 @@ class App {
   // ---------------------------------------------------------------- results
 
   onWin(g, res) {
-    const info = this.gameInfo; const p = this.profile; const s = p.stats;
+    const info = g.info, arg = this.gameArg; const p = this.profile; const s = p.stats;
     const t = todayKey();
     sfx.win();
     this.confetti('party', 60);
@@ -919,7 +930,7 @@ class App {
     const next = info.kind === 'level' ? { label: 'Next level ▶', primary: true, action: after(() => this.go('game', { kind: 'level', id: info.id + 1 })) }
       : info.kind === 'daily' ? { label: 'Daily calendar', primary: true, action: after(() => this.go('daily')) }
       : info.kind === 'event' ? { label: 'Event', primary: true, action: after(() => this.go('event')) }
-      : { label: 'Another one ▶', primary: true, action: after(() => this.go('game', this.gameArg)) };
+      : { label: 'Another one ▶', primary: true, action: after(() => this.go('game', arg)) };
     const w = this.dialog({ title: res.stars === 3 ? 'Purr-fect… er, paw-fect!' : res.stars === 2 ? 'Good dog!' : 'Solved!', cls: 'win',
       html: `<div class="win-pup">${pupSvg(this.selectedPup(), { body: true, mood: 'excited' })}</div>${starsHtml(res.stars, true)}
         <div class="win-stats"><span>⏱ ${fmtTime(res.time)}</span><span>❤️ ${g.hearts}/3</span><span>🐽 ${res.hints}</span></div>
