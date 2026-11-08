@@ -2,6 +2,7 @@ package ca.zarzycki.dokupuppies;
 
 import android.app.Activity;
 import android.graphics.Insets;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.KeyEvent;
@@ -10,26 +11,53 @@ import android.view.ViewGroup;
 import android.view.WindowInsets;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
 import android.window.OnBackInvokedDispatcher;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * Full-screen WebView around the hosted game (GitHub Pages). The page itself ships the whole game,
  * so content updates land on next launch without a new APK. Works with touch (phones, tablets) and
  * with a D-pad / remote (Android TV, Google TV) because the page handles arrow keys.
+ *
+ * A copy of the web files is bundled in the APK (assets/www, filled by Gradle from the repo root). It is
+ * only used when the live page cannot be loaded at all — a first launch with no network, or a cleared cache —
+ * and it is served under the live site's own URL, so saved progress, the service worker scope and the cloud
+ * sync key are the same whichever copy is running. Once the live page loads again, its service worker takes
+ * over as before.
  */
 public class MainActivity extends Activity {
+    private static final String BUNDLED_PREFIX = "www/";
+    private static final Map<String, String> MIME = new HashMap<>();
+    static {
+        MIME.put("html", "text/html"); MIME.put("js", "text/javascript"); MIME.put("css", "text/css");
+        MIME.put("json", "application/json"); MIME.put("svg", "image/svg+xml"); MIME.put("png", "image/png");
+        MIME.put("webmanifest", "application/manifest+json"); MIME.put("txt", "text/plain");
+    }
+
     private WebView web;
     private String url;
-    private boolean offline = false;
+    private String siteHost, sitePath; // the live site's host and base path, from game_url
+    private boolean offline = false;   // the "can't reach the kennel" page is showing
+    private boolean bundled = false;   // same-origin requests are being answered from the bundled copy
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         url = getString(R.string.game_url);
+        Uri site = Uri.parse(url);
+        siteHost = site.getHost();
+        sitePath = site.getPath() == null || site.getPath().isEmpty() ? "/" : site.getPath();
+        if (!sitePath.endsWith("/")) sitePath += "/";
+        if (savedInstanceState != null) bundled = savedInstanceState.getBoolean("bundled", false);
 
         web = new WebView(this);
         WebSettings s = web.getSettings();
@@ -54,8 +82,14 @@ public class MainActivity extends Activity {
                 return false; // stay inside the WebView for every link
             }
             @Override
+            public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+                return bundled ? bundledResponse(r.getUrl()) : null;
+            }
+            @Override
             public void onReceivedError(WebView v, WebResourceRequest r, WebResourceError e) {
-                if (r.isForMainFrame()) showOffline();
+                if (!r.isForMainFrame()) return;
+                // the live page is unreachable and no service worker answered: fall back to the copy in the APK
+                if (!bundled && isSitePage(r.getUrl())) loadBundled(); else showOffline();
             }
             @Override
             public void onPageFinished(WebView v, String u) { offline = false; }
@@ -82,6 +116,42 @@ public class MainActivity extends Activity {
         }
 
         if (savedInstanceState != null) web.restoreState(savedInstanceState); else web.loadUrl(url);
+    }
+
+    /** true for a URL on the live site (any page under its base path) */
+    private boolean isSitePage(Uri u) {
+        return u != null && siteHost.equals(u.getHost()) && u.getPath() != null && u.getPath().startsWith(sitePath);
+    }
+
+    /** Serve the live page from the copy bundled in the APK, under its own URL. */
+    private void loadBundled() {
+        bundled = true;
+        offline = false;
+        web.loadUrl(url);
+    }
+
+    /**
+     * The bundled file for a same-origin request, or null to let it go to the network (other hosts, and
+     * anything not shipped in the APK). The page's own history.pushState hashes never reach here.
+     */
+    private WebResourceResponse bundledResponse(Uri u) {
+        if (!isSitePage(u)) return null;
+        String rel = u.getPath().substring(sitePath.length());
+        if (rel.isEmpty() || rel.endsWith("/")) rel += "index.html";
+        String ext = rel.contains(".") ? rel.substring(rel.lastIndexOf('.') + 1).toLowerCase() : "";
+        String mime = MIME.get(ext);
+        if (mime == null) return null;
+        try {
+            InputStream in = getAssets().open(BUNDLED_PREFIX + rel);
+            boolean text = mime.startsWith("text/") || mime.endsWith("json") || mime.endsWith("xml");
+            WebResourceResponse res = new WebResourceResponse(mime, text ? "utf-8" : null, in);
+            Map<String, String> headers = new HashMap<>();
+            headers.put("Cache-Control", "no-store");
+            res.setResponseHeaders(headers);
+            return res;
+        } catch (IOException e) {
+            return null; // not bundled: try the network
+        }
     }
 
     private void showOffline() {
@@ -120,6 +190,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
+        out.putBoolean("bundled", bundled);
         web.saveState(out);
     }
 }

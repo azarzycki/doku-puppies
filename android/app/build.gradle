@@ -38,4 +38,17 @@ android {
     }
     lint { checkReleaseBuilds false }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    // assets/www: the game's web files, so a first launch with no network can still play (MainActivity serves
+    // them under the live URL only when the hosted page is unreachable). Always copied from the repo root.
+    sourceSets.main.assets.srcDirs += layout.buildDirectory.dir('generated/webassets')
 }
+
+def webRoot = rootProject.projectDir.parentFile
+tasks.register('copyWebAssets', Sync) {
+    description 'Copy the web game into assets/www for the offline first-run fallback'
+    from(webRoot) {
+        include 'index.html', 'manifest.webmanifest', 'css/**', 'js/**', 'data/**', 'icons/**'
+    }
+    into layout.buildDirectory.dir('generated/webassets/www')
+}
+preBuild.dependsOn copyWebAssets

@@ -3,7 +3,7 @@ name: Build Android app
 on:
   push:
     branches: [main]
-    paths: ['android/**', '.github/workflows/build-apk.yml']
+    paths: ['android/**', '.github/workflows/build-apk.yml', 'index.html', 'manifest.webmanifest', 'css/**', 'js/**', 'data/**', 'icons/**']
   workflow_dispatch:
 
 permissions:
