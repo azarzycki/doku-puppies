@@ -2,4 +2,6 @@
     <string name="app_name">Doku Puppies</string>
     <!-- The page the app loads. Change this if you rename the repo. -->
     <string name="game_url">https://azarzycki.github.io/doku-puppies/</string>
+    <!-- Shown when the network answers with a sign-in page (captive portal) instead of the game -->
+    <string name="portal_notice">This Wi‑Fi wants a sign-in first — playing the offline copy</string>
 </resources>

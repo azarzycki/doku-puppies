@@ -5,6 +5,8 @@ import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -16,8 +18,10 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 import android.window.OnBackInvokedDispatcher;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
@@ -33,9 +37,15 @@ import java.util.Map;
  * and it is served under the live site's own URL, so saved progress, the service worker scope and the cloud
  * sync key are the same whichever copy is running. Once the live page loads again, its service worker takes
  * over as before.
+ *
+ * Before the live URL is loaded, {@link Preflight} fetches the page and checks it really is ours. On a Wi‑Fi
+ * network behind a captive portal every request is answered with the portal's sign-in page; without the check the
+ * WebView would render it and keep it in its history and HTTP cache under the game's URL. In that case the bundled
+ * copy plays instead and every request that is not bundled is refused, so nothing from the portal gets in.
  */
 public class MainActivity extends Activity {
     private static final String BUNDLED_PREFIX = "www/";
+    private static final int PREFLIGHT_MS = 5000;
     private static final Map<String, String> MIME = new HashMap<>();
     static {
         MIME.put("html", "text/html"); MIME.put("js", "text/javascript"); MIME.put("css", "text/css");
@@ -48,6 +58,9 @@ public class MainActivity extends Activity {
     private String siteHost, sitePath; // the live site's host and base path, from game_url
     private boolean offline = false;   // the "can't reach the kennel" page is showing
     private boolean bundled = false;   // same-origin requests are being answered from the bundled copy
+    private boolean portal = false;    // the network answers with someone else's page: requests that are not bundled are refused
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private int loadSeq = 0;           // a preflight that finishes after a newer load was asked for is ignored
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -57,7 +70,10 @@ public class MainActivity extends Activity {
         siteHost = site.getHost();
         sitePath = site.getPath() == null || site.getPath().isEmpty() ? "/" : site.getPath();
         if (!sitePath.endsWith("/")) sitePath += "/";
-        if (savedInstanceState != null) bundled = savedInstanceState.getBoolean("bundled", false);
+        if (savedInstanceState != null) {
+            bundled = savedInstanceState.getBoolean("bundled", false);
+            portal = savedInstanceState.getBoolean("portal", false);
+        }
 
         web = new WebView(this);
         WebSettings s = web.getSettings();
@@ -79,6 +95,8 @@ public class MainActivity extends Activity {
         web.setWebViewClient(new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+                // "Try again" on the offline page: check the network again before the live page is loaded
+                if (offline && r.isForMainFrame() && isSitePage(r.getUrl())) { startLoad(); return true; }
                 return false; // stay inside the WebView for every link
             }
             @Override
@@ -115,7 +133,37 @@ public class MainActivity extends Activity {
             getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, this::back);
         }
 
-        if (savedInstanceState != null) web.restoreState(savedInstanceState); else web.loadUrl(url);
+        if (savedInstanceState != null) web.restoreState(savedInstanceState); else startLoad();
+    }
+
+    /**
+     * Load the game: ask the live site for its page first (off the main thread) and only point the WebView at the
+     * live URL when the reply is really our page. Otherwise the bundled copy plays, and a captive portal's answers
+     * are shut out until the next launch.
+     */
+    private void startLoad() {
+        final int seq = ++loadSeq;
+        offline = false;
+        new Thread(() -> {
+            final Preflight.Verdict v = Preflight.check(url, PREFLIGHT_MS);
+            main.post(() -> {
+                if (seq != loadSeq || isFinishing() || isDestroyed()) return;
+                switch (v) {
+                    case OURS:
+                        bundled = false; portal = false;
+                        web.loadUrl(url);
+                        break;
+                    case PORTAL:
+                        portal = true;
+                        Toast.makeText(MainActivity.this, R.string.portal_notice, Toast.LENGTH_LONG).show();
+                        loadBundled();
+                        break;
+                    default: // offline, or the site is down: the bundled copy (or the service worker's cache) plays
+                        portal = false;
+                        loadBundled();
+                }
+            });
+        }, "preflight").start();
     }
 
     /** true for a URL on the live site (any page under its base path) */
@@ -135,7 +183,7 @@ public class MainActivity extends Activity {
      * anything not shipped in the APK). The page's own history.pushState hashes never reach here.
      */
     private WebResourceResponse bundledResponse(Uri u) {
-        if (!isSitePage(u)) return null;
+        if (!isSitePage(u)) return portal ? refused() : null;
         String rel = u.getPath().substring(sitePath.length());
         if (rel.isEmpty() || rel.endsWith("/")) rel += "index.html";
         String ext = rel.contains(".") ? rel.substring(rel.lastIndexOf('.') + 1).toLowerCase() : "";
@@ -150,8 +198,13 @@ public class MainActivity extends Activity {
             res.setResponseHeaders(headers);
             return res;
         } catch (IOException e) {
-            return null; // not bundled: try the network
+            return portal ? refused() : null; // not bundled: try the network, unless a portal would answer in its place
         }
+    }
+
+    /** An empty 503 for a request that must not reach a captive portal (the page treats it like being offline). */
+    private WebResourceResponse refused() {
+        return new WebResourceResponse("text/plain", "utf-8", 503, "Service Unavailable", new HashMap<>(), new ByteArrayInputStream(new byte[0]));
     }
 
     private void showOffline() {
@@ -177,7 +230,7 @@ public class MainActivity extends Activity {
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) && offline) {
-            web.loadUrl(url);
+            startLoad();
             return true;
         }
         if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -191,6 +244,7 @@ public class MainActivity extends Activity {
     protected void onSaveInstanceState(Bundle out) {
         super.onSaveInstanceState(out);
         out.putBoolean("bundled", bundled);
+        out.putBoolean("portal", portal);
         web.saveState(out);
     }
 }
