@@ -1,6 +1,7 @@
 package ca.zarzycki.dokupuppies;
 
 import android.app.Activity;
+import android.content.pm.ApplicationInfo;
 import android.graphics.Insets;
 import android.net.Uri;
 import android.os.Build;
@@ -66,6 +67,11 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         url = getString(R.string.game_url);
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            // debug builds only: the emulator test (android/emulator-test) points the app at a server on the host
+            String override = getIntent().getStringExtra("url");
+            if (override != null && !override.isEmpty()) url = override;
+        }
         Uri site = Uri.parse(url);
         siteHost = site.getHost();
         sitePath = site.getPath() == null || site.getPath().isEmpty() ? "/" : site.getPath();
