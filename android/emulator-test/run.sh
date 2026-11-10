@@ -22,9 +22,15 @@ has() { python3 "$HERE/ui.py" has "$OUT/$1.xml" "$2"; }
 lacks() { ! has "$@"; }
 requests() { wc -l < "$OUT/state/requests.log" | tr -d ' '; }
 shot() { adb exec-out screencap -p > "$OUT/$1.png"; }
-dump() { # uiautomator can refuse while the screen is still changing: try a few times
+rawdump() { # uiautomator can refuse while the screen is still changing: try a few times
   for i in 1 2 3 4 5; do adb shell uiautomator dump /sdcard/ui.xml > /dev/null 2>&1 && adb pull /sdcard/ui.xml "$OUT/$1.xml" > /dev/null 2>&1 && grep -q '<node' "$OUT/$1.xml" && return 0; sleep 2; done
   echo "  (no UI dump for $1)"; : > "$OUT/$1.xml"; return 1; }
+dump() { # a slow emulator can put an "app isn't responding" dialog (usually the launcher's) over everything: close it
+  rawdump "$1" || return 1
+  if has "$1" "isn't responding"; then
+    echo "  (closing an 'isn't responding' dialog that covered the screen)"
+    c=$(python3 "$HERE/ui.py" center "$OUT/$1.xml" "Close app") && adb shell input tap $c; sleep 3; rawdump "$1"
+  fi; }
 launch() { adb shell am force-stop $PKG; adb shell am start -W -n $PKG/.MainActivity --es url "$URL" > /dev/null; }
 net() { if [ "$1" = on ]; then adb reverse tcp:8080 tcp:8080 > /dev/null; adb shell svc wifi enable; adb shell svc data enable
         else adb reverse --remove-all; adb shell svc wifi disable; adb shell svc data disable; fi; sleep 2; }
@@ -35,6 +41,7 @@ trap 'kill $SERVER 2> /dev/null; adb logcat -d > "$OUT/logcat.txt" 2> /dev/null'
 sleep 1
 adb logcat -c
 adb shell settings put global window_animation_scale 0 > /dev/null 2>&1
+adb shell settings put global hide_error_dialogs 1 > /dev/null 2>&1   # no "isn't responding" dialogs over the app
 adb shell input keyevent 82 > /dev/null 2>&1   # wake / unlock
 
 say "install"
@@ -64,7 +71,7 @@ say "3. online: the live page loads from the server"
 echo normal > "$OUT/state/mode"; : > "$OUT/state/requests.log"
 launch; sleep 10; shot 4-online; dump 4
 check "home screen shows" has 4 "Puppy Park"
-check "the page came from the server" grep -q "^GET / " "$OUT/state/requests.log"
+check "the page came from the server" grep -qx "GET /" "$OUT/state/requests.log"
 check "its scripts came from the server" grep -q "js/app.js" "$OUT/state/requests.log"
 check "the service worker was fetched" grep -q "sw.js" "$OUT/state/requests.log"
 echo "     server saw $(requests) requests"

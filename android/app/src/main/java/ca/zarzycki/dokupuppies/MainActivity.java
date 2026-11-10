@@ -12,6 +12,8 @@ import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowInsets;
+import android.webkit.ServiceWorkerClient;
+import android.webkit.ServiceWorkerController;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -58,8 +60,8 @@ public class MainActivity extends Activity {
     private String url;
     private String siteHost, sitePath; // the live site's host and base path, from game_url
     private boolean offline = false;   // the "can't reach the kennel" page is showing
-    private boolean bundled = false;   // same-origin requests are being answered from the bundled copy
-    private boolean portal = false;    // the network answers with someone else's page: requests that are not bundled are refused
+    private volatile boolean bundled = false; // same-origin requests are being answered from the bundled copy (read on WebView threads)
+    private volatile boolean portal = false;  // the network answers with someone else's page: requests that are not bundled are refused
     private final Handler main = new Handler(Looper.getMainLooper());
     private int loadSeq = 0;           // a preflight that finishes after a newer load was asked for is ignored
 
@@ -117,6 +119,13 @@ public class MainActivity extends Activity {
             }
             @Override
             public void onPageFinished(WebView v, String u) { offline = false; }
+        });
+        // Requests made by the service worker (its own script, and fetches from inside it) do not pass through the
+        // WebViewClient above: behind a captive portal they are refused here instead, so the worker falls back to its
+        // cache and the portal's page never reaches it either.
+        ServiceWorkerController.getInstance().setServiceWorkerClient(new ServiceWorkerClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebResourceRequest r) { return portal ? refused() : null; }
         });
 
         // Apps targeting Android 15+ are drawn edge-to-edge: keep the page out from under the status /
