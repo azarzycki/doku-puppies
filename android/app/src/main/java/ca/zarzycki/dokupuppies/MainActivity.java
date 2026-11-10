@@ -73,6 +73,7 @@ public class MainActivity extends Activity {
             // debug builds only: the emulator test (android/emulator-test) points the app at a server on the host
             String override = getIntent().getStringExtra("url");
             if (override != null && !override.isEmpty()) url = override;
+            WebView.setWebContentsDebuggingEnabled(true); // the test reads the page over Chrome DevTools
         }
         Uri site = Uri.parse(url);
         siteHost = site.getHost();

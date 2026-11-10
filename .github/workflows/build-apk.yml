@@ -71,6 +71,8 @@ jobs:
       - name: Build debug APK (honours the test's URL override and allows cleartext to the local server)
         working-directory: android
         run: gradle --no-daemon assembleDebug
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' } # the test's DevTools helper needs the global fetch and WebSocket
       - name: Enable KVM for the emulator
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
