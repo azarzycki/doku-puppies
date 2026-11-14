@@ -2,7 +2,7 @@
  * One puzzle session: the board, touch/mouse/keyboard input, hearts, timer, undo, hints.
  * The App decides what happens around it (rewards, dialogs, navigation).
  */
-import { nextDeduction, neighbours8, shadowOf } from './engine.js';
+import { nextDeduction, neighbours8, shadowOf, proofState, proveCross, forcedIn, starved } from './engine.js';
 import { assignColors, explainStep } from './puzzles.js';
 import { buildTerrainSvg } from './terrain.js';
 import { pupSvg } from './pups.js';
@@ -49,7 +49,8 @@ export class Game {
     this.elapsed = 0; this.running = false; this.lastTick = 0;
     this.history = [];
     this.hint = null;
-    this.basis = null; // no-guessing chooser: { i, chosen } while "Why here?" is open
+    // no-guessing mode: the units picked as evidence, a running what-if { cell, chain }, and the message on show
+    this.evidence = []; this.trial = null; this.proofMsg = null;
     this.done = false; this.failed = false; this.destroyed = false;
     this.cursor = -1;
     this.timers = {}; // pending mistake / fail / win callbacks, cancelled by destroy()
@@ -91,9 +92,19 @@ export class Game {
       this.cellEls.push(d);
     }
     boardEl.classList.toggle('coords', !!this.settings.showCoords);
+    // fence tabs: one at each end of every row and column, shown in no-guessing mode to pick that line as evidence
+    this.tabEls = [];
+    for (const type of ['row', 'col']) for (let k = 0; k < n; k++) for (const side of ['a', 'b']) {
+      const t = document.createElement('div');
+      t.className = `unit-tab ${type} ${side}`; t.dataset.type = type; t.dataset.idx = k; t.style.setProperty('--k', k);
+      t.setAttribute('role', 'button'); t.setAttribute('aria-label', `${type === 'row' ? 'Row' : 'Column'} ${k + 1}`);
+      t.addEventListener('click', () => this.toggleUnit({ type, idx: k }));
+      boardEl.appendChild(t); this.tabEls.push(t);
+    }
     this.drawTerrain();
     for (let i = 0; i < this.N; i++) this.paintCell(i, false);
     this.mountTray();
+    this.paintProof();
     this.bindPointer();
     this.updateAria();
   }
@@ -113,6 +124,7 @@ export class Game {
       d.style.setProperty('--rc', this.colors[k].fill); d.style.setProperty('--rd', this.colors[k].deep);
       d.title = this.colors[k].label;
       d.innerHTML = `<div class="yard-pup">${this.tokenSvg}</div>`;
+      d.addEventListener('click', () => this.toggleUnit({ type: 'reg', idx: k }));
       tray.appendChild(d); this.trayEls[k] = d;
     }
     this.updateTray(false);
@@ -204,25 +216,26 @@ export class Game {
       if (!drag) return;
       clearTimeout(drag.timer);
       const d = drag; drag = null;
-      if (d.moved) { if (d.batch.length) this.pushHistory(d.batch); lastTap = null; return; }
+      if (d.moved) { if (d.batch.length) this.pushHistory(d.batch); if (d.refused) this.refuse(d.refused.i, d.refused.msg); lastTap = null; return; }
       if (d.longPressed) { lastTap = null; return; }
       const now = performance.now();
       const i = d.start;
       if (lastTap && lastTap.i === i && now - lastTap.t < DOUBLE_TAP_MS) {
-        const wasPup = lastTap.wasPup; lastTap = null;
-        if (!wasPup) this.doubleTap(i); // double-tapping a pup just sends it home (the first tap did)
+        const { wasPup, changed } = lastTap; lastTap = null;
+        if (!wasPup) this.doubleTap(i, changed); // double-tapping a pup just sends it home (the first tap did)
         return;
       }
-      lastTap = { i, t: now, wasPup: this.cells[i] === PUP };
-      this.tap(i);
+      const wasPup = this.cells[i] === PUP;
+      lastTap = { i, t: now, wasPup, changed: this.tap(i) };
     };
     on('pointerup', finish);
     on('pointercancel', () => { if (drag) { clearTimeout(drag.timer); if (drag.batch.length) this.pushHistory(drag.batch); drag = null; } });
     on('contextmenu', e => e.preventDefault());
   }
   paintDrag(drag, i) {
-    if (this.given[i]) return;
+    if (this.given[i] || this.trial) return;
     const s = this.cells[i];
+    if (drag.mode === 'mark' && s === EMPTY) { const msg = this.crossRefusal(i); if (msg) { drag.refused = drag.refused || { i, msg }; return; } }
     if (drag.mode === 'mark' && s === EMPTY) { drag.batch.push({ i, from: s, to: MARK }); this.set(i, MARK); }
     else if (drag.mode === 'erase' && s === MARK) { drag.batch.push({ i, from: s, to: EMPTY }); this.set(i, EMPTY, true); }
   }
@@ -237,40 +250,54 @@ export class Game {
     if (state === MARK && prev !== MARK) { this.marksMade++; if (!quiet) sfx.mark(); }
     else if (state === EMPTY && prev === MARK && !quiet) sfx.clear();
     this.clearHint(true);
+    this.dismissProof();
     this.changed();
   }
   pushHistory(batch) { if (batch.length) { this.history.push(batch); this.changed(); } }
-  changed() { this.updateTray(); this.refreshBasis(); this.hooks.onChange && this.hooks.onChange(this); }
+  changed() { this.updateTray(); this.paintProof(); this.hooks.onChange && this.hooks.onChange(this); }
 
-  /** single tap: empty <-> crossed off; a pup is sent home */
+  /** single tap: empty <-> crossed off; a pup is sent home. Returns whether the board changed. */
   tap(i) {
-    if (this.done || this.failed || this.given[i]) return;
+    if (this.done || this.failed || this.given[i] || this.trial) return false;
     const s = this.cells[i];
-    if (s === EMPTY) { this.pushHistory([{ i, from: s, to: MARK }]); this.set(i, MARK); if (this.settings.haptics) haptic(8); }
-    else { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); if (s === PUP) this.unmarkAuto(i); }
+    if (s === EMPTY) return this.tryMark(i);
+    this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); if (s === PUP) this.unmarkAuto(i);
+    return true;
   }
 
-  /** double tap seats a pup; the first tap's toggle is folded back so undo returns to the original state */
-  doubleTap(i) {
+  /** double tap seats a pup; when the first tap changed the square, that is folded back so undo returns to the original state */
+  doubleTap(i, fold = true) {
     if (this.done || this.failed || this.given[i]) return;
     const last = this.history[this.history.length - 1];
-    if (last && last.length === 1 && last[0].i === i && !last[0].auto) { this.history.pop(); this.set(i, last[0].from, true); }
+    if (fold && last && last.length === 1 && last[0].i === i && !last[0].auto) { this.history.pop(); this.set(i, last[0].from, true); }
     this.tryPlacePup(i);
   }
 
-  /** keyboard / remote OK: empty -> mark -> pup -> empty */
+  /** keyboard / remote OK: empty -> mark -> pup -> empty. In no-guessing mode: a forced pup sits, anything else is a cross. */
   cycle(i) {
     if (this.done || this.failed || this.given[i]) return;
     const s = this.cells[i];
-    if (s === EMPTY) { this.pushHistory([{ i, from: s, to: MARK }]); this.set(i, MARK); if (this.settings.haptics) haptic(8); }
+    if (this.settings.noGuess) {
+      if (s === EMPTY) { if (this.trial || forcedIn(this.proofSt(), i)) this.tryPlacePup(i); else this.tryMark(i); }
+      else if (!this.trial) { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); }
+      return;
+    }
+    if (s === EMPTY) this.tryMark(i);
     else if (s === MARK) this.tryPlacePup(i);
     else { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); this.unmarkAuto(i); }
   }
 
   tryPlacePup(i) {
     if (this.done || this.failed || this.given[i]) return false;
-    if (this.settings.noGuess && !this.basisHolds(i)) { this.askBasis(i); return false; }
-    this.clearBasis(true);
+    if (this.settings.noGuess) {
+      clearTimeout(this.timers.refuse);
+      if (this.trial) { this.trialSeat(i); return false; }
+      if (this.cells[i] === MARK) { this.say('Crossed off', 'You crossed this square off. Clear the ✕ first if you have changed your mind.'); return false; }
+      const st = this.proofSt();
+      if (!st.cand[i]) { this.say('Not here', 'A pup that is already seated rules this square out — it shares its row, column or yard, or sits right next to it.', 'sad'); return false; }
+      if (!forcedIn(st, i)) { this.startTrial(i); return false; }
+      this.dismissProof();
+    }
     this.start();
     if (!this.solution[i]) { this.mistake(i); return false; }
     const batch = [{ i, from: this.cells[i], to: PUP }];
@@ -284,76 +311,152 @@ export class Game {
   }
 
   // ---------------------------------------------------------------- no-guessing mode
-
-  /** squares a seated pup rules out: its row, column, yard and the ring around it */
-  blockedMask() {
-    const m = new Uint8Array(this.N);
-    for (let p = 0; p < this.N; p++) if (this.cells[p] === PUP) { const s = shadowOf(this.n, this.puzzle.regions, p); for (let k = 0; k < this.N; k++) if (s[k]) m[k] = 1; }
-    return m;
-  }
-  /**
-   * What would justify a pup on square i: its row, column and yard, each with the other squares still open in it
-   * (not crossed off, not blocked by a seated pup). A unit with nothing else open forces the pup there.
+  /*
+   * The player shows the reasoning instead of being asked about it:
+   *  - picks rows / columns (tabs on the fence) and yards (the pup chips above it) as evidence, then crosses squares off.
+   *    One unit is a crowding argument, equal numbers of two kinds a lock; engine.proveCross checks it.
+   *  - seats a pup where a unit has one open square left; anywhere else the pup becomes a what-if: the player seats the
+   *    pups it forces and points at the unit that runs out of room, which crosses the first square off.
+   * Squares a seated pup blocks may be crossed freely.
    */
-  basisView(i, chosen = -1) {
-    const n = this.n, r = (i / n) | 0, c = i % n, reg = this.puzzle.regions[i];
-    const blocked = this.blockedMask();
-    const label = this.colors[reg].label;
-    // label: the chip ("Meadow"); name: how a sentence refers to it ("the meadow")
-    const units = [{ type: 'row', idx: r, label: `Row ${r + 1}`, name: `row ${r + 1}` }, { type: 'col', idx: c, label: `Column ${c + 1}`, name: `column ${c + 1}` }, { type: 'reg', idx: reg, label: label.charAt(0).toUpperCase() + label.slice(1), name: `the ${label}` }];
-    for (const u of units) u.open = this.unitCells(u).filter(k => k !== i && this.cells[k] === EMPTY && !blocked[k]);
-    const ready = !blocked[i] && chosen >= 0 && units[chosen].open.length === 0;
-    return { i, units, chosen, blocked: !!blocked[i], ready };
+
+  proofSt() { return proofState(this.puzzle, this.board()); }
+  unitName(u) { return u.type === 'row' ? `row ${u.idx + 1}` : u.type === 'col' ? `column ${u.idx + 1}` : `the ${this.colors[u.idx].label}`; }
+  unitList(us) { const a = us.map(u => this.unitName(u)); return a.length <= 1 ? a.join('') : a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1]; }
+  hasEvidence(u) { return this.evidence.some(e => e.type === u.type && e.idx === u.idx); }
+
+  /** why square i may not be crossed off right now ({title, text}), or null when it may */
+  crossRefusal(i) {
+    if (!this.settings.noGuess) return null;
+    if (this.trial) return { title: 'What if…?', text: 'Finish the what-if first, or tap Never mind.' };
+    const st = this.proofSt();
+    if (!st.cand[i]) return null; // a seated pup already rules it out
+    const res = proveCross(st, this.evidence, i);
+    return res.ok ? null : this.refusalText(res);
   }
-  /** no-guessing: may a pup sit on i without further ado? Only when some row, column or yard leaves it no alternative. */
-  basisHolds(i) {
-    const v = this.basisView(i);
-    return !v.blocked && v.units.some(u => u.open.length === 0);
-  }
-  /** "Why here?": open the chooser for square i */
-  askBasis(i) {
-    this.clearHint(true);
-    this.basis = { i, chosen: -1 };
-    this.start();
-    sfx.hint();
-    this.refreshBasis();
-  }
-  /** the player names the unit that forces the square; if it really does, the pup sits down */
-  chooseBasis(k) {
-    if (!this.basis) return;
-    this.basis.chosen = k;
-    if (this.basisView(this.basis.i, k).ready) { this.seatFromBasis(); return; }
-    this.refreshBasis();
-  }
-  seatFromBasis() {
-    const b = this.basis; if (!b) return;
-    this.clearBasis(true);
-    this.tryPlacePup(b.i);
-  }
-  /** repaint the chooser after any board change (crossing off the last open square makes the pup placeable) */
-  refreshBasis() {
-    if (!this.basis) return;
-    const v = this.basisView(this.basis.i, this.basis.chosen);
-    this.paintBasis(v);
-    this.hooks.onBasis && this.hooks.onBasis(this, v);
-  }
-  paintBasis(v) {
-    if (!this.cellEls) return;
-    this.el.classList.add('hinting');
-    const unit = v.chosen >= 0 ? v.units[v.chosen] : null;
-    const lit = new Set(unit ? this.unitCells(unit) : []); lit.add(v.i);
-    const open = new Set(unit ? unit.open : []);
-    for (let k = 0; k < this.N; k++) {
-      const d = this.cellEls[k];
-      d.classList.toggle('hl', lit.has(k)); d.classList.toggle('hl-main', k === v.i); d.classList.toggle('hl-in', k === v.i);
-      d.classList.toggle('hl-ghost', open.has(k)); d.classList.remove('hl-out');
+  refusalText(res) {
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+    const sq = k => k === 1 ? 'one open square' : k + ' open squares';
+    switch (res.reason) {
+      case 'none': return { title: 'Show why', text: 'Pick what your reasoning rests on, then cross the square off. Tap the tabs on the fence for a row or column, and a pup above the board for its yard. To test a square instead, double-tap it for a what-if.' };
+      case 'unitDone': return { title: 'Not proven', text: `${cap(this.unitName(res.unit))} already has its pup, so it can’t be the reason.` };
+      case 'crowdNo':
+        if (res.inside) return { title: 'Not proven', text: `This square is one of ${this.unitName(res.unit)}’s own open squares. On its own, a row, column or yard only rules out squares that would block all of its open squares.` };
+        return { title: 'Not proven', text: `A pup here would still leave ${this.unitName(res.unit)} ${sq(res.free.length)}. On its own, a row, column or yard only rules out a square that would block every open square in it.` };
+      case 'lockShape': return { title: 'Not proven', text: 'Pick one row, column or yard for a crowding argument, or equal numbers of two kinds for a lock — say two yards and the two rows they fit inside.' };
+      case 'lockFit':
+        if (res.stray.done) return { title: 'Not proven', text: `${cap(this.unitName(res.stray.unit))} already has its pup, so it can’t be part of a lock.` };
+        return { title: 'Not proven', text: `These don’t lock together yet: ${this.unitName(res.stray.unit)} still has an open square outside ${this.unitList(res.outer)}.` };
+      case 'lockTarget': return { title: 'Not proven', text: `${cap(this.unitList(res.inner))} ${res.inner.length === 1 ? 'fits' : 'fit'} inside ${this.unitList(res.outer)}. That rules out the other squares of ${this.unitList(res.outer)} — but this square isn’t one of them.` };
+      default: return { title: 'Not proven', text: 'That doesn’t prove it.' };
     }
   }
-  clearBasis(notify = true) {
-    if (!this.basis) return;
-    this.basis = null;
-    if (this.el) { this.el.classList.remove('hinting'); for (const d of this.cellEls) d.classList.remove('hl', 'hl-main', 'hl-out', 'hl-in', 'hl-ghost'); }
-    if (notify) this.hooks.onBasis && this.hooks.onBasis(this, null);
+  /** cross off i if the rules (and, in no-guessing mode, the evidence) allow it */
+  tryMark(i) {
+    const no = this.crossRefusal(i);
+    if (no) { this.refuse(i, no); return false; }
+    this.pushHistory([{ i, from: EMPTY, to: MARK }]); this.set(i, MARK);
+    if (this.settings.haptics) haptic(8);
+    return true;
+  }
+  /** shake the square and say why; shown after the double-tap window so a double-tap does not flash it */
+  refuse(i, msg) {
+    const d = this.cellEls && this.cellEls[i];
+    if (d) { d.classList.remove('nope'); void d.offsetWidth; d.classList.add('nope'); }
+    clearTimeout(this.timers.refuse);
+    this.timers.refuse = setTimeout(() => { this.timers.refuse = null; this.say(msg.title, msg.text); }, DOUBLE_TAP_MS + 20);
+  }
+  say(title, text, mood = 'think') { this.proofMsg = { title, text, mood }; this.notifyProof(); }
+  notifyProof() { this.hooks.onProof && this.hooks.onProof(this, this.proofMsg ? { ...this.proofMsg, trial: !!this.trial, evidence: this.evidence.length } : null); }
+  dismissProof() { clearTimeout(this.timers.refuse); if (this.proofMsg && !this.trial) { this.proofMsg = null; this.notifyProof(); } }
+
+  /** a fence tab or yard chip was tapped: add / remove that unit as evidence, or, in a what-if, name it as out of room */
+  toggleUnit(u) {
+    if (!this.settings.noGuess || this.done || this.failed) return;
+    if (this.trial) { this.claimStarved(u); return; }
+    const k = this.evidence.findIndex(e => e.type === u.type && e.idx === u.idx);
+    if (k >= 0) this.evidence.splice(k, 1); else if (this.evidence.length < 8) this.evidence.push({ type: u.type, idx: u.idx });
+    sfx.tap();
+    this.dismissProof();
+    this.paintProof();
+  }
+  /** keyboard: R / C / Y pick the row, column or yard under the cursor */
+  toggleCursorUnit(type) {
+    if (this.cursor < 0) return;
+    const i = this.cursor;
+    this.toggleUnit({ type, idx: type === 'row' ? (i / this.n) | 0 : type === 'col' ? i % this.n : this.puzzle.regions[i] });
+  }
+  clearEvidence() { this.evidence = []; this.dismissProof(); this.paintProof(); }
+
+  // what-if: a trial pup, the pups it forces, and the unit that ends up with no room
+  startTrial(i) {
+    this.clearHint(true);
+    clearTimeout(this.timers.refuse);
+    this.trial = { cell: i, chain: [] };
+    this.start();
+    sfx.hint();
+    this.paintProof();
+    this.say('What if…?', 'Nothing forces a pup here yet, so let’s test it. The lit squares are what would stay open. Double-tap to seat any pup this forces. When a row, column or yard has no open square left, tap its fence tab or yard pup — that rules this square out.');
+  }
+  trialSt() { const st = this.proofSt(); st.place(this.trial.cell); for (const c of this.trial.chain) st.place(c); return st; }
+  trialSeat(i) {
+    const t = this.trial;
+    if (i === t.cell || t.chain.includes(i)) return;
+    const ts = this.trialSt();
+    const u = forcedIn(ts, i);
+    if (!ts.cand[i] || ts.pup[i]) this.say('What if…?', 'That square is blocked in this what-if.');
+    else if (!u) this.say('What if…?', 'That pup isn’t forced: its row, column and yard each still have another open square in this what-if.');
+    else { t.chain.push(i); sfx.tap(); this.say('What if…?', `Then ${this.unitName(u)}’s pup has to sit there. Keep going, or tap the row, column or yard that has run out of room.`); }
+    this.paintProof();
+  }
+  claimStarved(u) {
+    const ts = this.trialSt();
+    const name = this.unitName(u), cap = name.charAt(0).toUpperCase() + name.slice(1);
+    if (!starved(ts, u)) {
+      const k = ts.unitCells(u.type, u.idx).length;
+      this.say('What if…?', ts.unitHasPup(u.type, u.idx) ? `${cap} has its pup in this what-if.` : `${cap} still has ${k === 1 ? 'an open square' : k + ' open squares'} in this what-if.`);
+      return;
+    }
+    const c = this.trial.cell;
+    this.trial = null; this.proofMsg = null;
+    this.paintProof();
+    this.pushHistory([{ i: c, from: this.cells[c], to: MARK }]); this.set(c, MARK);
+    this.hooks.onProof && this.hooks.onProof(this, { toast: `Ruled out: ${name} would have nowhere to go` });
+  }
+  cancelTrial() {
+    if (!this.trial) return;
+    this.trial = null; this.proofMsg = null;
+    this.paintProof(); this.notifyProof();
+  }
+  /** settings changed (or the mode was switched) while this board is up */
+  syncMode() {
+    if (!this.settings.noGuess) { clearTimeout(this.timers.refuse); this.trial = null; this.evidence = []; this.proofMsg = null; this.notifyProof(); }
+    this.paintProof();
+  }
+  /** evidence tint, tab / chip states, and the what-if overlay */
+  paintProof() {
+    if (!this.cellEls) return;
+    const on = !!this.settings.noGuess;
+    this.el.classList.toggle('proof', on);
+    if (this.trayEl) this.trayEl.classList.toggle('proof', on);
+    const ev = new Set();
+    for (const u of this.evidence) for (const i of this.unitCells(u)) ev.add(i);
+    for (let k = 0; k < this.N; k++) this.cellEls[k].classList.toggle('ev', ev.has(k));
+    for (const t of (this.tabEls || [])) t.classList.toggle('on', this.hasEvidence({ type: t.dataset.type, idx: Number(t.dataset.idx) }));
+    if (this.trayEls) for (let k = 0; k < this.n; k++) this.trayEls[k].classList.toggle('sel', this.hasEvidence({ type: 'reg', idx: k }));
+    if (this.trial) {
+      const ts = this.trialSt(), t = this.trial;
+      this.el.classList.add('hinting'); this.trialPainted = true;
+      for (let k = 0; k < this.N; k++) {
+        const d = this.cellEls[k];
+        d.classList.toggle('hl', !!ts.cand[k]);
+        d.classList.toggle('hl-main', k === t.cell); d.classList.toggle('hl-ghost', k === t.cell);
+        d.classList.toggle('hl-in', t.chain.includes(k)); d.classList.remove('hl-out');
+      }
+    } else if (this.trialPainted) {
+      this.trialPainted = false;
+      if (!this.hint) { this.el.classList.remove('hinting'); for (const d of this.cellEls) d.classList.remove('hl', 'hl-main', 'hl-out', 'hl-in', 'hl-ghost'); }
+    }
   }
 
   /** mark every square a pup at i blocks (recorded into batch) */
@@ -391,6 +494,7 @@ export class Game {
   revive() { this.failed = false; this.hearts = 1; this.start(); this.changed(); }
 
   undo() {
+    if (this.trial) { if (this.trial.chain.length) { this.trial.chain.pop(); this.paintProof(); } else this.cancelTrial(); return; } // step back out of a what-if
     if (this.done || this.failed || !this.history.length) return;
     const batch = this.history.pop();
     for (let k = batch.length - 1; k >= 0; k--) { const { i, from } = batch[k]; this.cells[i] = from; this.paintCell(i, false); }
@@ -405,7 +509,8 @@ export class Game {
     this.hearts = this.maxHearts; this.mistakes = 0; this.history = []; this.failed = false; this.done = false;
     this.hintsUsed = 0; this.freeHintsUsed = 0; this.fetched = 0;
     this.elapsed = 0; this.running = false; this.lastTick = 0; // the clock starts again with the first move
-    this.clearHint(false); this.clearBasis(true);
+    this.clearHint(false);
+    clearTimeout(this.timers.refuse); this.trial = null; this.evidence = []; this.proofMsg = null; this.notifyProof();
     if (this.el) {
       this.el.classList.remove('won');
       if (this.trayEl) { this.trayEl.classList.remove('won'); this.trayEl.querySelectorAll('.yard-chip').forEach(d => { d.style.animationDelay = ''; }); }
@@ -424,6 +529,7 @@ export class Game {
     for (let i = 0; i < this.N; i++) if (this.cells[i] === PUP) pups++;
     if (pups < this.n) return false;
     this.done = true; this.pause();
+    this.evidence = []; this.proofMsg = null; this.notifyProof(); this.paintProof();
     this.clearHint(false);
     const stars = 3 - (this.mistakes > 0 ? 1 : 0) - (this.hintsUsed > 0 ? 1 : 0);
     this.celebrate();
@@ -498,7 +604,7 @@ export class Game {
   hintsLeftFree() { return Math.max(0, FREE_HINTS - this.freeHintsUsed); }
 
   showHint(step) {
-    this.clearBasis(true);
+    this.cancelTrial(); this.dismissProof();
     const el = this.el;
     el.classList.add('hinting');
     const focus = new Set(step.focus.cells);
@@ -561,7 +667,7 @@ export class Game {
       if (open < bestOpen) { bestOpen = open; best = i; }
     }
     if (best < 0) return false;
-    this.clearBasis(true);
+    this.cancelTrial();
     this.hintsUsed++; this.fetched++;
     const batch = [{ i: best, from: this.cells[best], to: PUP }];
     this.cells[best] = PUP; this.paintCell(best, true);
@@ -595,8 +701,9 @@ export class Game {
     if (this.cursor < 0 || this.done || this.failed) return;
     const i = this.cursor, s = this.cells[i];
     if (this.given[i]) return;
+    if (this.trial && what !== 'pup' && what !== 'cycle') return;
     if (what === 'cycle') this.cycle(i);
-    else if (what === 'mark') { if (s === EMPTY) { this.pushHistory([{ i, from: s, to: MARK }]); this.set(i, MARK); } else if (s === MARK) { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); } }
+    else if (what === 'mark') { if (s === EMPTY) this.tryMark(i); else if (s === MARK) { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); } }
     else if (what === 'pup') { if (s !== PUP) this.tryPlacePup(i); }
     else if (what === 'clear') { if (s !== EMPTY) { this.pushHistory([{ i, from: s, to: EMPTY }]); this.set(i, EMPTY); } }
   }

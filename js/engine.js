@@ -790,6 +790,88 @@ export function nextDeduction(puzzle, board, solution) {
   return null;
 }
 
+// ---------------------------------------------------------------- proofs (no-guessing mode)
+
+/*
+ * In no-guessing mode the player states the evidence for a move and these functions check it. The evidence language
+ * is deliberately smaller than the hint catalogue, because several hints are one argument seen from different sides:
+ *
+ *   hint            proof the player enters
+ *   mistake         none: every cross is proven, so a wrong one cannot arise
+ *   basic           none: squares a seated pup blocks may be crossed freely
+ *   single          none: a pup sits when a unit has one open square left (the crosses carry the proof)
+ *   pointing        LOCK  one yard inside one line
+ *   claiming        LOCK  one line inside one yard
+ *   subset2/3       LOCK  k yards inside k lines, or k lines inside k yards (any k, not just 2 and 3)
+ *   (not a hint)    LOCK  k rows inside k columns or the reverse: the same counting argument, so it is accepted
+ *   crowd           CROWD one unit, all of whose open squares a pup on the target would block (any unit size)
+ *   hypo            WHAT-IF a trial pup, the pups it forces one at a time, then the unit left with no room
+ *
+ * A "unit" is { type: 'row' | 'col' | 'reg', idx }.
+ */
+
+/** the knowledge on a live board as a LogicState: seated pups placed, the player's crosses eliminated */
+export function proofState(puzzle, board) {
+  const st = initialState(puzzle);
+  for (const p of board.pups) if (!st.pup[p]) st.place(p);
+  for (const m of board.marks) st.eliminate(m);
+  return st;
+}
+export function unitHas(st, u, i) {
+  return u.type === 'row' ? ((i / st.n) | 0) === u.idx : u.type === 'col' ? i % st.n === u.idx : st.reg[i] === u.idx;
+}
+export function unitsThrough(st, i) {
+  return [{ type: 'row', idx: (i / st.n) | 0 }, { type: 'col', idx: i % st.n }, { type: 'reg', idx: st.reg[i] }];
+}
+/** the unit that forces a pup onto i (i is its only open square), or null */
+export function forcedIn(st, i) {
+  if (!st.cand[i] || st.pup[i]) return null;
+  for (const u of unitsThrough(st, i)) {
+    if (st.unitHasPup(u.type, u.idx)) continue;
+    const cells = st.unitCells(u.type, u.idx);
+    if (cells.length === 1 && cells[0] === i) return u;
+  }
+  return null;
+}
+/** a unit with no pup and nowhere left to put one */
+export function starved(st, u) { return !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).length === 0; }
+
+/**
+ * Does the chosen evidence prove that no pup can sit on `target`?
+ * One unit is read as CROWD, equal numbers of two kinds of unit as LOCK. Every chosen unit has to take part.
+ * Returns { ok: true, kind } or { ok: false, reason, ... } with enough detail to say what is missing.
+ */
+export function proveCross(st, units, target) {
+  if (!units.length) return { ok: false, reason: 'none' };
+  if (units.length === 1) {
+    const u = units[0];
+    if (st.unitHasPup(u.type, u.idx)) return { ok: false, reason: 'unitDone', unit: u };
+    const cells = st.unitCells(u.type, u.idx);
+    const s = st.shadow(target);
+    const free = cells.filter(i => !s[i]); // the target itself counts when it lies in the unit
+    if (!cells.length || free.length) return { ok: false, reason: 'crowdNo', unit: u, free, inside: unitHas(st, u, target) };
+    return { ok: true, kind: 'crowd', unit: u };
+  }
+  const types = [...new Set(units.map(u => u.type))];
+  const g0 = units.filter(u => u.type === types[0]), g1 = units.filter(u => u.type !== types[0]);
+  if (types.length !== 2 || g0.length !== g1.length) return { ok: false, reason: 'lockShape' };
+  let held = null, fail = null;
+  for (const [inner, outer] of [[g0, g1], [g1, g0]]) {
+    let stray = null;
+    for (const u of inner) {
+      if (st.unitHasPup(u.type, u.idx)) { stray = { unit: u, done: true }; break; }
+      const cells = st.unitCells(u.type, u.idx);
+      const out = cells.find(i => !outer.some(b => unitHas(st, b, i)));
+      if (out !== undefined || !cells.length) { stray = { unit: u, cell: out }; break; }
+    }
+    if (stray) { if (!fail || fail.stray.done) fail = { inner, outer, stray }; continue; }
+    if (outer.some(b => unitHas(st, b, target)) && !inner.some(a => unitHas(st, a, target))) return { ok: true, kind: 'lock', inner, outer };
+    held = { inner, outer };
+  }
+  if (held) return { ok: false, reason: 'lockTarget', ...held };
+  return { ok: false, reason: 'lockFit', ...fail };
+}
+
 // ---------------------------------------------------------------- generation
 
 const STYLES = [
