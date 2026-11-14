@@ -74,6 +74,34 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   check((await cellOf(page, pick.good)) === 0, 'tapping a pup sends it home');
+  // no-guessing mode: a pup that is not yet forced opens the "Why here?" chooser instead of sitting down
+  await app(page, a => { a.profile.settings.noGuess = true; a.game.settings = a.profile.settings; });
+  check(!(await app(page, (a, i) => a.game.basisHolds(i), pick.good)), 'no-guessing: a correct square with open neighbours in every unit is not yet forced');
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  const asked = await app(page, a => ({ basis: !!a.game.basis, shown: !document.getElementById('basis-bubble').classList.contains('hidden'), chips: document.querySelectorAll('#basis-actions .unit-chip').length, title: document.getElementById('basis-title').textContent }));
+  check((await cellOf(page, pick.good)) === 0 && asked.basis && asked.shown && asked.chips === 3 && asked.title === 'Why here?', 'double-tap on an unforced square asks "Why here?" with row, column and yard chips, the pup stays home (' + JSON.stringify(asked) + ')');
+  await page.locator('#basis-actions .unit-chip').nth(0).click(); await page.waitForTimeout(250);
+  const row = await app(page, a => { const g = a.game, v = g.basisView(g.basis.i, 0); return { open: v.units[0].open, ghosts: document.querySelectorAll('#board .cell.hl-ghost').length, title: document.getElementById('basis-title').textContent, seat: !!document.getElementById('basis-seat') }; });
+  check(row.open.length > 0 && row.ghosts === row.open.length && row.title === 'Not yet' && !row.seat, 'naming the row lights its still-open squares with ❓ and withholds the pup (' + row.open.length + ' open)');
+  await app(page, (a, open) => { for (const k of open) a.game.tap(k); }, row.open); await page.waitForTimeout(250);
+  const ready = await app(page, a => ({ title: document.getElementById('basis-title').textContent, seat: !!document.getElementById('basis-seat'), ghosts: document.querySelectorAll('#board .cell.hl-ghost').length }));
+  check(ready.seat && ready.title === 'That’s the one!' && ready.ghosts === 0, 'crossing those squares off makes the row force the square: "Seat the pup" appears');
+  await page.locator('#basis-seat').click(); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.good)) === 2 && (await app(page, a => !a.game.basis && document.getElementById('basis-bubble').classList.contains('hidden'))), 'Seat the pup seats it and closes the chooser');
+  check((await app(page, (a, i) => { a.game.undo(); return a.game.cells[i]; }, pick.good)) === 0, 'undo takes the pup off again, the ✕ marks stay');
+  await page.waitForTimeout(450);
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(90); await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.good)) === 2 && (await app(page, a => document.getElementById('basis-bubble').classList.contains('hidden'))), 'a square the marks already force seats straight away, no chooser');
+  await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
+  check((await cellOf(page, pick.good)) === 0, 'tapping that pup sends it home');
+  // a plain guess on a wrong square opens the chooser instead of costing a heart; Android Back closes the chooser
+  const guess = await app(page, (a, good) => { const g = a.game, n = g.n, sol = g.puzzle.solution, blocked = g.blockedMask(); for (let r = 0; r < n; r++) { if (r === ((good / n) | 0)) continue; for (let c = 0; c < n; c++) { const i = r * n + c; if (sol[r] !== c && !g.given[i] && g.cells[i] === 0 && !blocked[i]) return i; } } return -1; }, pick.good);
+  const q = await centre(guess);
+  await page.mouse.click(q.x, q.y); await page.waitForTimeout(90); await page.mouse.click(q.x, q.y); await page.waitForTimeout(450);
+  const guessed = await app(page, (a, i) => ({ hearts: a.game.hearts, cell: a.game.cells[i], basis: !!a.game.basis }), guess);
+  check(guessed.hearts === 3 && guessed.cell === 0 && guessed.basis, 'a guess on a wrong square asks "Why here?" instead of costing a heart (' + JSON.stringify(guessed) + ')');
+  check((await app(page, a => a.handleBack())) && (await app(page, a => !a.game.basis && document.getElementById('basis-bubble').classList.contains('hidden'))), 'Android Back closes the chooser');
+  await app(page, a => { a.profile.settings.noGuess = false; a.game.settings = a.profile.settings; });
   // leaving a level must take its board out of play: a board left listening on #board judged later taps against its
   // own solution, so correct pups on the next level rang as mistakes and "Out of hearts" came up for the wrong game
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(450); // one mark so level 1 is saved as in progress

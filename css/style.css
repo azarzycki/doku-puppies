@@ -220,6 +220,11 @@ a.btn { text-decoration: none; }
 @keyframes tilt { 0%, 100% { transform: rotate(0); } 30% { transform: rotate(-6deg); } 60% { transform: rotate(5deg); } }
 .hint-body { flex: 1; } .hint-body b { display: block; color: var(--accent-ink); } .hint-body p { margin: 2px 0 8px; font-size: .95rem; }
 .hint-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* no-guessing "Why here?" chooser: the unit chips name the row, column or yard that should force the square */
+.basis-bubble { border-color: #cfe3ff; }
+.unit-chip { display: inline-flex; align-items: center; gap: 6px; }
+.unit-chip.on { outline: 3px solid var(--accent); outline-offset: -1px; }
+.unit-chip .swatch { width: 14px; height: 14px; border-radius: 4px; background: var(--rc); border: 2px solid var(--rd); }
 
 /* landscape / wide: board left, controls right */
 @media (min-width: 720px) and (min-aspect-ratio: 5/4) {

@@ -149,6 +149,7 @@ class App {
    *  (Home › Walks › level 3 › level 4 › …) we jump back to it so the system Back key still leaves the app from Home. */
   up() {
     if (this.dialogStack.length) { this.closeDialog(); return; }
+    if (this.game?.basis) { this.game.clearBasis(true); return; }
     const cur = history.state || { s: this.current, i: 0 };
     const parent = this.parentOf(cur);
     const i = cur.i ?? 0;
@@ -158,7 +159,7 @@ class App {
   /** Android wrapper asks the page first on the Back key: true = handled here (a dialog closed) */
   handleBack() {
     const top = this.dialogStack[this.dialogStack.length - 1];
-    if (!top) return false;
+    if (!top) { if (this.game?.basis) { this.game.clearBasis(true); return true; } return false; }
     if (top.dataset.modal) return true; // win/fail cards stay until a button is pressed
     this.closeDialog(top);
     return true;
@@ -608,6 +609,7 @@ class App {
       ${toggle('sound', 'Sound', 'Barks, pops and jingles')}
       ${toggle('haptics', 'Vibration', 'A little buzz on taps and mistakes')}
       ${toggle('autoMark', 'Auto-cross blocked squares', 'When a pup sits down, cross off everything it blocks')}
+      ${toggle('noGuess', 'No guessing', 'A pup only sits on the last open square of a row, column or yard — otherwise, show which one forces it')}
       ${toggle('showCoords', 'Show coordinates', 'Column,row in each square (handy with hints)')}
       ${toggle('bigText', 'Bigger text', 'For tablets and TVs across the room')}
       ${toggle('reduceMotion', 'Reduce motion', 'Fewer bouncy animations')}
@@ -623,7 +625,7 @@ class App {
       <div class="row-buttons"><button class="btn danger" id="reset-btn">Reset progress on this device</button></div>
       <p class="muted small center">Doku Puppies v1 · made with 🐾 · a puppy take on the "one per row, column and region" puzzle.</p>
       <p class="muted small center"><a href="privacy.html" target="_blank" rel="noopener">Privacy policy</a></p>`;
-    for (const id of ['sound', 'haptics', 'autoMark', 'showCoords', 'bigText', 'reduceMotion']) {
+    for (const id of ['sound', 'haptics', 'autoMark', 'noGuess', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); } });
     }
     $$('.mark-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.markStyle = b.dataset.mark; this.store.commit('settings'); sfx.tap(); if (this.game) this.game.setMarkStyle(b.dataset.mark); this.renderSettings(); }));
@@ -685,7 +687,8 @@ class App {
         <p class="muted small">A finished 5×5: one pup per row, column and yard, nobody touching.</p></div>
       <div class="help-card"><h3>Controls</h3>
         <ul><li><b>Tap</b> an empty square to cross it off ✕ (a pup can’t go there); tap again to clear it.</li><li><b>Double-tap</b> a square to seat a pup (or <b>hold</b> it). Tap a pup to send it home.</li>
-        <li><b>Drag</b> across empty squares to cross off a bunch at once.</li><li><b>Remote / keyboard:</b> arrows move, OK/Enter cycles ✕ → 🐶 → empty. X crosses off, P seats a pup, U undoes, H sniffs.</li></ul></div>
+        <li><b>Drag</b> across empty squares to cross off a bunch at once.</li>
+        <li><b>No guessing</b> (in Settings) makes you show your work: a pup only sits where it is the last open square of a row, column or yard. If it isn’t yet, name the row, column or yard that forces it — the squares still open there light up with ❓, and once you have crossed them off the pup can sit.</li><li><b>Remote / keyboard:</b> arrows move, OK/Enter cycles ✕ → 🐶 → empty. X crosses off, P seats a pup, U undoes, H sniffs.</li></ul></div>
       <div class="help-card"><h3>Hearts, Sniff & Fetch</h3>
         <ul><li>You have <b>3 hearts</b>. Seating a pup on a wrong square costs one. Lose all three and the board resets (or spend 🦴 ${COSTS.heart} treats for one more).</li>
         <li><b>Sniff 🐽</b> explains the next deduction and highlights the squares involved; tap again to apply it. The first ${FREE_HINTS} sniffs per puzzle are free, then 🦴 ${COSTS.hint} each.</li>
@@ -730,7 +733,7 @@ class App {
     $('#board').innerHTML = ''; $('#yard-tray').innerHTML = '';
     $('#game-title').textContent = 'Fetching…';
     $('#game-sub').textContent = '';
-    this.hideHint();
+    this.hideHint(); this.hideBasis();
     let info = null;
     try {
       if (arg.kind === 'level') info = arg.id <= await levelCount() ? await getLevel(arg.id) : await getEndlessLevel(arg.id);
@@ -765,6 +768,7 @@ class App {
         onFail: (g) => this.onFail(g),
         onMistake: () => this.flashHearts(),
         onHint: (g, step, text) => step ? this.showHintBubble(step, text) : this.hideHint(),
+        onBasis: (g, v) => v ? this.showBasisBubble(v) : this.hideBasis(),
         spend: (n, why) => this.trySpend(n, why),
       },
     });
@@ -777,6 +781,7 @@ class App {
     this.layoutBoard();
     this.updateHud();
     const mf = $('#hint-face'); mf.innerHTML = pupSvg(this.selectedPup(), { mood: 'think' });
+    $('#basis-face').innerHTML = pupSvg(this.selectedPup(), { mood: 'think' });
     if (resume && !game.isFresh()) this.toast('Welcome back — your board was saved 🐾');
     if (game.failed) this.onFail(game);
     if (info.kind === 'level' && info.id === 1 && game.isFresh() && !this.profile.stats.solved) this.showTutorial();
@@ -870,6 +875,31 @@ class App {
     this.updateHud();
   }
   hideHint() { $('#hint-bubble')?.classList.add('hidden'); }
+
+  /** no-guessing mode: the "Why here?" chooser for a pup that is not yet forced onto its square */
+  showBasisBubble(v) {
+    const g = this.game; if (!g) return;
+    const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+    const b = $('#basis-bubble');
+    const wasHidden = b.classList.contains('hidden');
+    b.classList.remove('hidden');
+    const u = v.chosen >= 0 ? v.units[v.chosen] : null;
+    let title, text, mood = 'think';
+    if (v.blocked) { title = 'Not here'; text = 'A pup that is already seated rules this square out — it shares its row, column or yard, or sits right next to it.'; mood = 'sad'; }
+    else if (!u) { title = 'Why here?'; text = 'No guessing: a pup only sits on the last open square of a row, column or yard. Which one leaves only this square?'; }
+    else if (v.ready) { title = 'That’s the one!'; text = `${cap(u.name)} has no other open square, so the pup can sit here.`; mood = 'happy'; }
+    else { const k = u.open.length; title = 'Not yet'; text = `${cap(u.name)} still has ${k === 1 ? 'one other open square' : k + ' other open squares'} (marked ❓). Cross them off if you can rule them out — the pup can sit once ${u.name} is down to this square.`; }
+    const face = $('#basis-face svg'); if (face) face.dataset.mood = mood;
+    $('#basis-title').textContent = title;
+    $('#basis-text').textContent = text;
+    const chips = v.blocked ? '' : v.units.map((x, k) => `<button class="btn small unit-chip ${k === v.chosen ? 'on' : ''}" data-unit="${k}">${x.type === 'reg' ? `<i class="swatch" style="--rc:${g.colors[x.idx].fill};--rd:${g.colors[x.idx].deep}"></i>` : ''}${x.label}</button>`).join('');
+    $('#basis-actions').innerHTML = `${chips}${v.ready ? '<button class="btn small primary" id="basis-seat">Seat the pup</button>' : ''}<button class="btn small" id="basis-close">Never mind</button>`;
+    $$('#basis-actions .unit-chip').forEach(c => c.addEventListener('click', () => { sfx.tap(); g.chooseBasis(Number(c.dataset.unit)); this.updateHud(); }));
+    $('#basis-seat')?.addEventListener('click', () => { sfx.tap(); g.seatFromBasis(); this.updateHud(); });
+    $('#basis-close').addEventListener('click', () => { sfx.tap(); g.clearBasis(true); });
+    if (wasHidden) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+  }
+  hideBasis() { $('#basis-bubble')?.classList.add('hidden'); }
 
   showTutorial() {
     this.dialog({ title: 'Welcome to Doku Puppies! 🐾', cls: 'tutorial',

@@ -49,6 +49,7 @@ export class Game {
     this.elapsed = 0; this.running = false; this.lastTick = 0;
     this.history = [];
     this.hint = null;
+    this.basis = null; // no-guessing chooser: { i, chosen } while "Why here?" is open
     this.done = false; this.failed = false; this.destroyed = false;
     this.cursor = -1;
     this.timers = {}; // pending mistake / fail / win callbacks, cancelled by destroy()
@@ -239,7 +240,7 @@ export class Game {
     this.changed();
   }
   pushHistory(batch) { if (batch.length) { this.history.push(batch); this.changed(); } }
-  changed() { this.updateTray(); this.hooks.onChange && this.hooks.onChange(this); }
+  changed() { this.updateTray(); this.refreshBasis(); this.hooks.onChange && this.hooks.onChange(this); }
 
   /** single tap: empty <-> crossed off; a pup is sent home */
   tap(i) {
@@ -267,9 +268,11 @@ export class Game {
   }
 
   tryPlacePup(i) {
-    if (this.done || this.failed || this.given[i]) return;
+    if (this.done || this.failed || this.given[i]) return false;
+    if (this.settings.noGuess && !this.basisHolds(i)) { this.askBasis(i); return false; }
+    this.clearBasis(true);
     this.start();
-    if (!this.solution[i]) return this.mistake(i);
+    if (!this.solution[i]) { this.mistake(i); return false; }
     const batch = [{ i, from: this.cells[i], to: PUP }];
     this.set(i, PUP);
     if (this.settings.haptics) haptic([10, 30, 10]);
@@ -277,6 +280,80 @@ export class Game {
     if (this.settings.autoMark) this.autoMarkAround(i, batch);
     this.pushHistory(batch);
     this.checkWin();
+    return true;
+  }
+
+  // ---------------------------------------------------------------- no-guessing mode
+
+  /** squares a seated pup rules out: its row, column, yard and the ring around it */
+  blockedMask() {
+    const m = new Uint8Array(this.N);
+    for (let p = 0; p < this.N; p++) if (this.cells[p] === PUP) { const s = shadowOf(this.n, this.puzzle.regions, p); for (let k = 0; k < this.N; k++) if (s[k]) m[k] = 1; }
+    return m;
+  }
+  /**
+   * What would justify a pup on square i: its row, column and yard, each with the other squares still open in it
+   * (not crossed off, not blocked by a seated pup). A unit with nothing else open forces the pup there.
+   */
+  basisView(i, chosen = -1) {
+    const n = this.n, r = (i / n) | 0, c = i % n, reg = this.puzzle.regions[i];
+    const blocked = this.blockedMask();
+    const label = this.colors[reg].label;
+    // label: the chip ("Meadow"); name: how a sentence refers to it ("the meadow")
+    const units = [{ type: 'row', idx: r, label: `Row ${r + 1}`, name: `row ${r + 1}` }, { type: 'col', idx: c, label: `Column ${c + 1}`, name: `column ${c + 1}` }, { type: 'reg', idx: reg, label: label.charAt(0).toUpperCase() + label.slice(1), name: `the ${label}` }];
+    for (const u of units) u.open = this.unitCells(u).filter(k => k !== i && this.cells[k] === EMPTY && !blocked[k]);
+    const ready = !blocked[i] && chosen >= 0 && units[chosen].open.length === 0;
+    return { i, units, chosen, blocked: !!blocked[i], ready };
+  }
+  /** no-guessing: may a pup sit on i without further ado? Only when some row, column or yard leaves it no alternative. */
+  basisHolds(i) {
+    const v = this.basisView(i);
+    return !v.blocked && v.units.some(u => u.open.length === 0);
+  }
+  /** "Why here?": open the chooser for square i */
+  askBasis(i) {
+    this.clearHint(true);
+    this.basis = { i, chosen: -1 };
+    this.start();
+    sfx.hint();
+    this.refreshBasis();
+  }
+  /** the player names the unit that forces the square; if it really does, the pup sits down */
+  chooseBasis(k) {
+    if (!this.basis) return;
+    this.basis.chosen = k;
+    if (this.basisView(this.basis.i, k).ready) { this.seatFromBasis(); return; }
+    this.refreshBasis();
+  }
+  seatFromBasis() {
+    const b = this.basis; if (!b) return;
+    this.clearBasis(true);
+    this.tryPlacePup(b.i);
+  }
+  /** repaint the chooser after any board change (crossing off the last open square makes the pup placeable) */
+  refreshBasis() {
+    if (!this.basis) return;
+    const v = this.basisView(this.basis.i, this.basis.chosen);
+    this.paintBasis(v);
+    this.hooks.onBasis && this.hooks.onBasis(this, v);
+  }
+  paintBasis(v) {
+    if (!this.cellEls) return;
+    this.el.classList.add('hinting');
+    const unit = v.chosen >= 0 ? v.units[v.chosen] : null;
+    const lit = new Set(unit ? this.unitCells(unit) : []); lit.add(v.i);
+    const open = new Set(unit ? unit.open : []);
+    for (let k = 0; k < this.N; k++) {
+      const d = this.cellEls[k];
+      d.classList.toggle('hl', lit.has(k)); d.classList.toggle('hl-main', k === v.i); d.classList.toggle('hl-in', k === v.i);
+      d.classList.toggle('hl-ghost', open.has(k)); d.classList.remove('hl-out');
+    }
+  }
+  clearBasis(notify = true) {
+    if (!this.basis) return;
+    this.basis = null;
+    if (this.el) { this.el.classList.remove('hinting'); for (const d of this.cellEls) d.classList.remove('hl', 'hl-main', 'hl-out', 'hl-in', 'hl-ghost'); }
+    if (notify) this.hooks.onBasis && this.hooks.onBasis(this, null);
   }
 
   /** mark every square a pup at i blocks (recorded into batch) */
@@ -328,7 +405,7 @@ export class Game {
     this.hearts = this.maxHearts; this.mistakes = 0; this.history = []; this.failed = false; this.done = false;
     this.hintsUsed = 0; this.freeHintsUsed = 0; this.fetched = 0;
     this.elapsed = 0; this.running = false; this.lastTick = 0; // the clock starts again with the first move
-    this.clearHint(false);
+    this.clearHint(false); this.clearBasis(true);
     if (this.el) {
       this.el.classList.remove('won');
       if (this.trayEl) { this.trayEl.classList.remove('won'); this.trayEl.querySelectorAll('.yard-chip').forEach(d => { d.style.animationDelay = ''; }); }
@@ -421,6 +498,7 @@ export class Game {
   hintsLeftFree() { return Math.max(0, FREE_HINTS - this.freeHintsUsed); }
 
   showHint(step) {
+    this.clearBasis(true);
     const el = this.el;
     el.classList.add('hinting');
     const focus = new Set(step.focus.cells);
@@ -445,7 +523,7 @@ export class Game {
     return out;
   }
   clearHint(notify = true) {
-    if (!this.hint && !this.el?.classList.contains('hinting')) return;
+    if (!this.hint) return;
     this.hint = null;
     if (this.el) {
       this.el.classList.remove('hinting');
@@ -483,6 +561,7 @@ export class Game {
       if (open < bestOpen) { bestOpen = open; best = i; }
     }
     if (best < 0) return false;
+    this.clearBasis(true);
     this.hintsUsed++; this.fetched++;
     const batch = [{ i: best, from: this.cells[best], to: PUP }];
     this.cells[best] = PUP; this.paintCell(best, true);
