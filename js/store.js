@@ -49,7 +49,7 @@ export function blankProfile() {
     levels: {}, daily: {}, streak: { count: 0, last: '', best: 0 },
     events: {}, tricks: {}, dailyTricks: { date: '', progress: {}, claimed: {} },
     stats: { solved: 0, marks: 0, pupsPlaced: 0, mistakes: 0, hintsUsed: 0, perfect: 0, noHint: 0, byRank: {}, bySize: {}, bestTime: {}, timePlayed: 0, fetched: 0, zoomies: 0 },
-    settings: { sound: true, haptics: true, autoMark: false, noGuess: false, reduceMotion: false, bigText: false, showCoords: false },
+    settings: { sound: true, haptics: true, autoMark: false, noGuess: false, noGuessStyle: 'A', reduceMotion: false, bigText: false, showCoords: false },
     progress: {},
   };
 }

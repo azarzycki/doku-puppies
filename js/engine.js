@@ -793,19 +793,18 @@ export function nextDeduction(puzzle, board, solution) {
 // ---------------------------------------------------------------- proofs (no-guessing mode)
 
 /*
- * In no-guessing mode the player states the evidence for a move and these functions check it. The evidence language
- * is deliberately smaller than the hint catalogue, because several hints are one argument seen from different sides:
+ * In no-guessing mode the player gives the reason for a move and these functions check it. One argument covers every
+ * elimination hint: "a pup on this square would leave these rows, columns or yards with no way to seat their pups".
  *
- *   hint            proof the player enters
- *   mistake         none: every cross is proven, so a wrong one cannot arise
- *   basic           none: squares a seated pup blocks may be crossed freely
- *   single          none: a pup sits when a unit has one open square left (the crosses carry the proof)
- *   pointing        LOCK  one yard inside one line
- *   claiming        LOCK  one line inside one yard
- *   subset2/3       LOCK  k yards inside k lines, or k lines inside k yards (any k, not just 2 and 3)
- *   (not a hint)    LOCK  k rows inside k columns or the reverse: the same counting argument, so it is accepted
- *   crowd           CROWD one unit, all of whose open squares a pup on the target would block (any unit size)
- *   hypo            WHAT-IF a trial pup, the pups it forces one at a time, then the unit left with no room
+ *   hint            what the player points at
+ *   mistake         nothing: every cross is proven, so a wrong one cannot arise
+ *   basic           nothing: squares a seated pup blocks may be crossed freely
+ *   single          nothing: a pup sits when a unit has one open square left (the crosses carry the proof)
+ *   pointing        the yard: a pup on the target would take the only line the yard has left
+ *   claiming        the line: a pup on the target would take the only yard the line has left
+ *   crowd           the unit: a pup on the target would block every open square in it
+ *   subset2/3       the k yards (or k lines): with the target taken they are left k-1 lines (or yards) between them
+ *   hypo            a what-if: a pup on trial, the proven moves that follow, then the unit(s) left with no room
  *
  * A "unit" is { type: 'row' | 'col' | 'reg', idx }.
  */
@@ -837,39 +836,48 @@ export function forcedIn(st, i) {
 export function starved(st, u) { return !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).length === 0; }
 
 /**
- * Does the chosen evidence prove that no pup can sit on `target`?
- * One unit is read as CROWD, equal numbers of two kinds of unit as LOCK. Every chosen unit has to take part.
- * Returns { ok: true, kind } or { ok: false, reason, ... } with enough detail to say what is missing.
+ * True when these units cannot all be given a pup: one of them is starved, or they are squeezed into too little room
+ * between them (two yards with one row left, say). A unit that already has its pup asks for nothing.
+ * The search always fills the tightest unit first; `budget` caps the work, and running out counts as "not shown".
  */
-export function proveCross(st, units, target) {
-  if (!units.length) return { ok: false, reason: 'none' };
-  if (units.length === 1) {
-    const u = units[0];
-    if (st.unitHasPup(u.type, u.idx)) return { ok: false, reason: 'unitDone', unit: u };
-    const cells = st.unitCells(u.type, u.idx);
-    const s = st.shadow(target);
-    const free = cells.filter(i => !s[i]); // the target itself counts when it lies in the unit
-    if (!cells.length || free.length) return { ok: false, reason: 'crowdNo', unit: u, free, inside: unitHas(st, u, target) };
-    return { ok: true, kind: 'crowd', unit: u };
-  }
-  const types = [...new Set(units.map(u => u.type))];
-  const g0 = units.filter(u => u.type === types[0]), g1 = units.filter(u => u.type !== types[0]);
-  if (types.length !== 2 || g0.length !== g1.length) return { ok: false, reason: 'lockShape' };
-  let held = null, fail = null;
-  for (const [inner, outer] of [[g0, g1], [g1, g0]]) {
-    let stray = null;
-    for (const u of inner) {
-      if (st.unitHasPup(u.type, u.idx)) { stray = { unit: u, done: true }; break; }
-      const cells = st.unitCells(u.type, u.idx);
-      const out = cells.find(i => !outer.some(b => unitHas(st, b, i)));
-      if (out !== undefined || !cells.length) { stray = { unit: u, cell: out }; break; }
+export function stuck(st, units, budget = 20000) {
+  const need = units.filter(u => !st.unitHasPup(u.type, u.idx));
+  if (!need.length) return false;
+  let left = budget;
+  const fits = s => {
+    let best = null;
+    for (const u of need) {
+      if (s.unitHasPup(u.type, u.idx)) continue;
+      const cells = s.unitCells(u.type, u.idx);
+      if (!cells.length) return false;
+      if (!best || cells.length < best.length) best = cells;
     }
-    if (stray) { if (!fail || fail.stray.done) fail = { inner, outer, stray }; continue; }
-    if (outer.some(b => unitHas(st, b, target)) && !inner.some(a => unitHas(st, a, target))) return { ok: true, kind: 'lock', inner, outer };
-    held = { inner, outer };
+    if (!best) return true; // every one of them has a pup
+    for (const c of best) {
+      if (--left < 0) return true;
+      const t = s.clone(); t.place(c);
+      if (fits(t)) return true;
+    }
+    return false;
+  };
+  return !fits(st);
+}
+/** Is `target` proven out by these units: would a pup on it leave them with no way to seat their pups? */
+export function rulesOut(st, units, target) {
+  if (!units.length || !st.cand[target] || st.pup[target]) return false;
+  const t = st.clone(); t.place(target);
+  return stuck(t, units);
+}
+/** The rows, columns and yards whose open squares all lie inside `cells` (a Set): what a group of lit squares stands for. */
+export function unitsWithin(st, cells) {
+  const out = [];
+  if (!cells.size) return out;
+  for (const type of UNIT_TYPES) for (let idx = 0; idx < st.n; idx++) {
+    if (st.unitHasPup(type, idx)) continue;
+    const open = st.unitCells(type, idx);
+    if (open.length && open.every(i => cells.has(i))) out.push({ type, idx });
   }
-  if (held) return { ok: false, reason: 'lockTarget', ...held };
-  return { ok: false, reason: 'lockFit', ...fail };
+  return out;
 }
 
 // ---------------------------------------------------------------- generation

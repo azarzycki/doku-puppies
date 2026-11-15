@@ -149,7 +149,7 @@ class App {
    *  (Home › Walks › level 3 › level 4 › …) we jump back to it so the system Back key still leaves the app from Home. */
   up() {
     if (this.dialogStack.length) { this.closeDialog(); return; }
-    if (this.game?.trial) { this.game.cancelTrial(); return; }
+    if (this.game?.proof.backOut()) return; // no-guessing mode: a question or a what-if is dropped first
     const cur = history.state || { s: this.current, i: 0 };
     const parent = this.parentOf(cur);
     const i = cur.i ?? 0;
@@ -159,7 +159,7 @@ class App {
   /** Android wrapper asks the page first on the Back key: true = handled here (a dialog closed) */
   handleBack() {
     const top = this.dialogStack[this.dialogStack.length - 1];
-    if (!top) { if (this.game?.trial) { this.game.cancelTrial(); return true; } return false; }
+    if (!top) return !!this.game?.proof.backOut();
     if (top.dataset.modal) return true; // win/fail cards stay until a button is pressed
     this.closeDialog(top);
     return true;
@@ -218,7 +218,7 @@ class App {
       if (k === 'x' || k === 'X') { game.act('mark'); return; }
       if (k === 'p' || k === 'P') { game.act('pup'); return; }
       if (k === 'Delete') { game.act('clear'); return; }
-      if (game.settings.noGuess && /^[rcy]$/i.test(k)) { game.toggleCursorUnit({ r: 'row', c: 'col', y: 'reg' }[k.toLowerCase()]); return; }
+      if (game.settings.noGuess && /^[rcy]$/i.test(k)) { game.proof.key({ r: 'row', c: 'col', y: 'reg' }[k.toLowerCase()]); return; }
     }
     if (game) {
       if ((k === 'u' || k === 'U' || (k === 'z' && (e.ctrlKey || e.metaKey)))) { e.preventDefault(); game.undo(); this.updateHud(); return; }
@@ -610,7 +610,9 @@ class App {
       ${toggle('sound', 'Sound', 'Barks, pops and jingles')}
       ${toggle('haptics', 'Vibration', 'A little buzz on taps and mistakes')}
       ${toggle('autoMark', 'Auto-cross blocked squares', 'When a pup sits down, cross off everything it blocks')}
-      ${toggle('noGuess', 'No guessing', 'Show your reasoning: pick the rows, columns or yards that prove a square is out before you cross it off')}
+      ${toggle('noGuess', 'No guessing', 'Prove every move: a square is only crossed off, and a pup only seated, once the reason is shown')}
+      <div class="chips style-chips">${[['A', 'A · Point at what blocks it'], ['B', 'B · Ghost pup']].map(([id, label]) => `<button class="chip ${(s.noGuessStyle === 'B' ? 'B' : 'A') === id ? 'on' : ''}" data-style="${id}">${label}</button>`).join('')}</div>
+      <p class="muted small">Two ways of showing the reason are on trial. Pick one here, or switch under the board while you play.</p>
       ${toggle('showCoords', 'Show coordinates', 'Column,row in each square (handy with hints)')}
       ${toggle('bigText', 'Bigger text', 'For tablets and TVs across the room')}
       ${toggle('reduceMotion', 'Reduce motion', 'Fewer bouncy animations')}
@@ -629,6 +631,7 @@ class App {
     for (const id of ['sound', 'haptics', 'autoMark', 'noGuess', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); this.game.syncMode(); } });
     }
+    $$('.style-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.noGuessStyle = b.dataset.style; this.store.commit('settings'); sfx.tap(); if (this.game) { this.game.settings = this.profile.settings; this.game.syncMode(); } this.renderSettings(); }));
     $$('.mark-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.markStyle = b.dataset.mark; this.store.commit('settings'); sfx.tap(); if (this.game) this.game.setMarkStyle(b.dataset.mark); this.renderSettings(); }));
     $('#sync-link').addEventListener('click', () => this.linkDevice());
     $('#sync-enter').addEventListener('click', () => this.enterCode());
@@ -690,12 +693,12 @@ class App {
         <ul><li><b>Tap</b> an empty square to cross it off ✕ (a pup can’t go there); tap again to clear it.</li><li><b>Double-tap</b> a square to seat a pup (or <b>hold</b> it). Tap a pup to send it home.</li>
         <li><b>Drag</b> across empty squares to cross off a bunch at once.</li><li><b>Remote / keyboard:</b> arrows move, OK/Enter cycles ✕ → 🐶 → empty. X crosses off, P seats a pup, U undoes, H sniffs.</li></ul></div>
       <div class="help-card"><h3>No guessing (optional)</h3>
-        <p>Switch it on in Settings to show your reasoning for every move. Squares a seated pup blocks can still be crossed off freely; everything else needs evidence.</p>
-        <ul><li><b>Pick the evidence.</b> Tap the tabs on the fence to pick a row or column, and a pup above the board to pick its yard (keyboard: R, C, Y). Then cross squares off as usual.</li>
-        <li><b>Crowding</b> — one pick. A square is out if a pup on it would block every open square of the row, column or yard you picked.</li>
-        <li><b>Lock</b> — equal picks of two kinds. If two yards only have open squares in two rows, those rows are theirs: every other square in those rows is out. It works the same for one yard and one line, three and three, lines inside yards, or rows inside columns.</li>
-        <li><b>Seating a pup.</b> A pup sits where its row, column or yard has no other open square.</li>
-        <li><b>What if…?</b> Double-tap any other open square to test it. Seat the pups that follow, then tap the row, column or yard that has run out of room — the square you tested is crossed off.</li></ul></div>
+        <p>Switch it on in Settings to prove every move. Squares a seated pup blocks can still be crossed off freely, and a pup sits (double-tap) where its row, column or yard has no other open square. Everything else needs a reason, and there are two ways to show it. Try both: the pup under the board has a switch.</p>
+        <ul><li><b>A · Point at what blocks it.</b> Tap a square to cross it off. If the reason is not obvious it shows a <b>?</b> and waits. Tap the squares that block it: every open square of one row, column or yard, each of which a pup on the ? square would clash with. Hold a square to take its whole yard, or tap a tab on the fence for a whole row or column. The squares stay lit, so anything else they block takes one tap.</li>
+        <li><b>A · What if…?</b> Double-tap a square that is not yet the only spot and you can try the pup there. Play on as usual inside the what-if; when a row, column or yard has nowhere left, tap any square in it and the square you tried is crossed off.</li>
+        <li><b>B · Ghost pup.</b> Tap a square to try a pup on it. Everything it would block goes dark. Tap any square of the row, column or yard that is left with no room and the square is crossed off. If nobody is stuck yet, double-tap a lit square that has become someone’s only spot and keep going, or tap another lit square to test that one too.</li>
+        <li><b>Two together.</b> Sometimes two yards are squeezed into one row. Name both (hold each yard, or tap the fence tabs) and they count as one reason.</li>
+        <li><b>Keyboard:</b> R, C and Y name the row, column and yard under the cursor.</li></ul></div>
       <div class="help-card"><h3>Hearts, Sniff & Fetch</h3>
         <ul><li>You have <b>3 hearts</b>. Seating a pup on a wrong square costs one. Lose all three and the board resets (or spend 🦴 ${COSTS.heart} treats for one more).</li>
         <li><b>Sniff 🐽</b> explains the next deduction and highlights the squares involved; tap again to apply it. The first ${FREE_HINTS} sniffs per puzzle are free, then 🦴 ${COSTS.hint} each.</li>
@@ -775,12 +778,15 @@ class App {
         onFail: (g) => this.onFail(g),
         onMistake: () => this.flashHearts(),
         onHint: (g, step, text) => step ? this.showHintBubble(step, text) : this.hideHint(),
-        onProof: (g, v) => v ? this.showProofBubble(v) : this.hideBasis(),
+        onProof: (g, v) => this.showProofBubble(v),
+        onSettings: () => this.store.commit('settings'),
         spend: (n, why) => this.trySpend(n, why),
       },
     });
     this.game = game;
+    $('#basis-face').innerHTML = pupSvg(this.selectedPup(), { mood: 'think' });
     game.mount($('#board'), $('#board-frame'), $('#yard-tray'));
+    game.proof.notify(); // the no-guessing panel takes its room under the board before the board is sized
     $('#game-title').textContent = info.title;
     $('#game-sub').innerHTML = `${esc(info.subtitle || '')} · ${info.n}×${info.n} · <span title="${rankName(info.rank)}">${paws(info.rank)}</span>`;
     $('#game-sub').title = `${rankName(info.rank)} rank`;
@@ -788,7 +794,6 @@ class App {
     this.layoutBoard();
     this.updateHud();
     const mf = $('#hint-face'); mf.innerHTML = pupSvg(this.selectedPup(), { mood: 'think' });
-    $('#basis-face').innerHTML = pupSvg(this.selectedPup(), { mood: 'think' });
     if (resume && !game.isFresh()) this.toast('Welcome back — your board was saved 🐾');
     if (game.failed) this.onFail(game);
     if (info.kind === 'level' && info.id === 1 && game.isFresh() && !this.profile.stats.solved) this.showTutorial();
@@ -825,7 +830,9 @@ class App {
     const g = this.game; if (!g) return;
     const hearts = $('#hearts');
     hearts.innerHTML = [1, 2, 3].map(k => `<span class="heart ${k <= g.hearts ? 'on' : 'off'}">${k <= g.hearts ? '❤️' : '🤍'}</span>`).join('');
-    $('#btn-undo').disabled = !g.history.length || g.done || g.failed;
+    $('#btn-undo').disabled = !g.canUndo;
+    if (!g.hint) this.hideHint(); // a hint that was undone or played past takes its bubble with it
+    $('#basis-bubble').classList.toggle('hidden', !this.proofOn || !!g.hint); // Sniff's bubble takes the no-guessing panel's place while it is up
     $('#btn-sniff').disabled = g.done || g.failed;
     $('#btn-fetch').disabled = g.done || g.failed;
     const left = g.hintsLeftFree();
@@ -883,23 +890,31 @@ class App {
   }
   hideHint() { $('#hint-bubble')?.classList.add('hidden'); }
 
-  /** no-guessing mode: why a move was not accepted, or the running what-if */
+  /**
+   * No-guessing mode: the panel under the board. It stays up for as long as the mode is on (v is null when it is off
+   * or the board is finished), so the board does not shift while squares are being tapped; only its text and buttons change.
+   */
   showProofBubble(v) {
-    const g = this.game; if (!g) return;
-    if (v.toast) { this.hideBasis(); this.toast(v.toast, 2200); return; }
-    const b = $('#basis-bubble');
-    const wasHidden = b.classList.contains('hidden');
-    b.classList.remove('hidden');
-    const face = $('#basis-face svg'); if (face) face.dataset.mood = v.mood || 'think';
-    $('#basis-title').textContent = v.title;
-    $('#basis-text').textContent = v.text;
-    $('#basis-actions').innerHTML = v.trial ? '<button class="btn small" id="basis-close">Never mind</button>'
-      : `<button class="btn small primary" id="basis-close">OK</button>${v.evidence ? '<button class="btn small" id="basis-clear">Clear picks</button>' : ''}`;
-    $('#basis-close').addEventListener('click', () => { sfx.tap(); if (g.trial) g.cancelTrial(); else g.dismissProof(); });
-    $('#basis-clear')?.addEventListener('click', () => { sfx.tap(); g.clearEvidence(); });
-    if (wasHidden) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+    const g = this.game, b = $('#basis-bubble'); if (!g || !b) return;
+    const was = !!this.proofOn;
+    this.proofOn = !!v;
+    b.classList.toggle('hidden', !v || !!g.hint);
+    $('#s-game').classList.toggle('proofing', !!v);
+    if (v) {
+      const face = $('#basis-face svg'); if (face) face.dataset.mood = v.mood || 'think';
+      $('#basis-title').textContent = v.title;
+      $('#basis-text').textContent = v.text;
+      const sig = v.buttons.map(x => x.id + ':' + x.label).join('|');
+      if (sig !== this.proofButtons) { // the same buttons are left alone, so a tap that lands mid-update is not lost
+        this.proofButtons = sig;
+        $('#basis-actions').innerHTML = v.buttons.map(x => `<button class="btn small${x.primary ? ' primary' : ''}" data-act="${esc(x.id)}">${esc(x.label)}</button>`).join('');
+        $$('#basis-actions button').forEach(el => el.addEventListener('click', () => { sfx.tap(); this.game?.proof.press(el.dataset.act); this.updateHud(); }));
+      }
+      if (!was) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+    }
+    if (was !== this.proofOn && this.current === 'game') this.layoutBoard(); // the panel takes (or gives back) room the board is sized by
   }
-  hideBasis() { $('#basis-bubble')?.classList.add('hidden'); }
+  hideBasis() { this.proofOn = false; this.proofButtons = null; $('#basis-bubble')?.classList.add('hidden'); $('#s-game')?.classList.remove('proofing'); }
 
   showTutorial() {
     this.dialog({ title: 'Welcome to Doku Puppies! 🐾', cls: 'tutorial',

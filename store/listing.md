@@ -31,7 +31,7 @@ Doku Puppies is a free, cosy logic puzzle with no ads and nothing to buy. Seat e
 FUN, FAIR GAMEPLAY
 • Tap to cross off a square, tap again to clear it. Double-tap (or hold) to seat a pup, drag to cross off a whole run.
 • Three hearts per board: a pup on the wrong square costs one, so think it through.
-• Optional no-guessing mode: show your reasoning for every move — pick the rows, columns and yards your deduction rests on, or play out a what-if until a yard runs out of room.
+• Optional no-guessing mode: prove every move. Point at the squares that block a square, or try a ghost pup and show which yard it leaves with no room.
 • Earn stars for clean solves, treats for every win, and tricks (trophies) for feats.
 
 HINTS THAT ACTUALLY TEACH

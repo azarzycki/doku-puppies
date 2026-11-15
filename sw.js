@@ -3,7 +3,7 @@
 const VERSION = 'dokupuppies-v1';
 const NETWORK_WAIT_MS = 3000; // on a connection that is up but going nowhere, serve the cached copy after this long
 const PAGE_MARKER = '<meta name="doku-puppies"'; // index.html carries this; a captive portal's sign-in page does not
-const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/game.js', 'js/engine.js', 'js/puzzles.js', 'js/pups.js', 'js/sound.js', 'js/store.js', 'js/gen-worker.js', 'js/terrain.js',
+const SHELL = ['./', 'index.html', 'css/style.css', 'js/app.js', 'js/game.js', 'js/proof.js', 'js/engine.js', 'js/puzzles.js', 'js/pups.js', 'js/sound.js', 'js/store.js', 'js/gen-worker.js', 'js/terrain.js',
   'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'data/levels.json', 'data/bank.json', 'data/daily.json'];
 
 /** The network's reply for the page, if it really is our page: same origin, HTML, and carrying the marker. A captive
