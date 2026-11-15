@@ -695,7 +695,8 @@ class App {
       <div class="help-card"><h3>No guessing (optional)</h3>
         <p>Switch it on in Settings to prove every move. Squares a seated pup blocks can still be crossed off freely, and a pup sits (double-tap) where its row, column or yard has no other open square. Everything else needs a reason, and there are two ways to show it. Try both: the pup under the board has a switch.</p>
         <ul><li><b>A · Point at what blocks it.</b> Tap a square to cross it off. If the reason is not obvious it shows a <b>?</b> and waits. Tap the squares that block it: every open square of one row, column or yard, each of which a pup on the ? square would clash with. Hold a square to take its whole yard, or tap a tab on the fence for a whole row or column. The squares stay lit, so anything else they block takes one tap.</li>
-        <li><b>A · What if…?</b> Double-tap a square that is not yet the only spot and you can try the pup there. Play on as usual inside the what-if; when a row, column or yard has nowhere left, tap any square in it and the square you tried is crossed off.</li>
+        <li><b>A · Pup first.</b> Double-tap a square that is not yet the only spot and the pup waits there, with the squares that could still take it flashing. Light what rules those out and the pup sits. Or press <b>What if…?</b> to try the pup instead.</li>
+        <li><b>What-ifs.</b> A what-if is the same board with a pup on trial: play on as usual inside it. When a row, column or yard has nowhere left, tap any square in it and the square you tried is crossed off. If instead every pup finds a seat, that is the answer (a board has only one) and they all sit for real.</li>
         <li><b>B · Ghost pup.</b> Tap a square to try a pup on it. Everything it would block goes dark. Tap any square of the row, column or yard that is left with no room and the square is crossed off. If nobody is stuck yet, double-tap a lit square that has become someone’s only spot and keep going, or tap another lit square to test that one too.</li>
         <li><b>Two together.</b> Sometimes two yards are squeezed into one row. Name both (hold each yard, or tap the fence tabs) and they count as one reason.</li>
         <li><b>Keyboard:</b> R, C and Y name the row, column and yard under the cursor.</li></ul></div>
@@ -780,6 +781,7 @@ class App {
         onHint: (g, step, text) => step ? this.showHintBubble(step, text) : this.hideHint(),
         onProof: (g, v) => this.showProofBubble(v),
         onSettings: () => this.store.commit('settings'),
+        onToast: msg => this.toast(msg, 3000),
         spend: (n, why) => this.trySpend(n, why),
       },
     });

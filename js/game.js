@@ -313,6 +313,22 @@ export class Game {
     this.checkWin();
     return true;
   }
+  /** no-guessing mode: seat, as one move, the pups a what-if has shown to be the board's solution */
+  seatProven(cells) {
+    this.start();
+    const batch = [];
+    for (const i of cells) {
+      if (this.cells[i] === PUP || !this.solution[i]) continue; // a full board is the one solution; never seat a pup that is not part of it
+      batch.push({ i, from: this.cells[i], to: PUP }); this.cells[i] = PUP; this.paintCell(i, true);
+      if (this.settings.autoMark) this.autoMarkAround(i, batch);
+    }
+    if (!batch.length) return false;
+    if (this.settings.haptics) haptic([10, 30, 10]);
+    sfx.place();
+    this.pushHistory(batch);
+    this.checkWin();
+    return true;
+  }
 
   // ---------------------------------------------------------------- no-guessing mode (the rules live in proof.js)
 

@@ -13,7 +13,11 @@
  * A what-if (this.tests) is the board one level down: a pup on trial plus the proven moves made after it. The same
  * moves work inside it. When a row, column or yard has nowhere left (the player taps one of its squares, all dark by
  * then, or names it whole), the square on trial is crossed off one level up.
- * Style A starts one from the "What if…?" button after a refused pup; in style B every test of a square is one.
+ * If instead every pup finds a seat, that is a whole solution, and a board has only one: the what-if is the answer.
+ * Style A starts one from the "What if…?" button on a waiting pup; in style B every test of a square is one.
+ *
+ * Style A also takes a pup first: a double-tap on a square that is not yet the only spot leaves the pup waiting
+ * (this.want) while the squares that could still take it flash, and it sits once the lit squares rule them out.
  */
 import { proofState, forcedIn, stuck, rulesOut, unitsWithin, unitHas, unitsThrough } from './engine.js';
 import { sfx, haptic } from './sound.js';
@@ -34,7 +38,7 @@ export class Proof {
     this.lit = new Set(); // style A: squares lit one at a time
     this.picks = [];      // rows / columns / yards named whole (A: lit as a block, B: "these have no room")
     this.used = false;    // the reason on show has already proven something, so the next question starts afresh
-    this.offer = -1;      // style A: the square the "What if…?" button would try
+    this.want = -1;       // style A: the square a pup was asked for on, waiting for the reason its rivals are out
     this.msg = null;      // what the pup under the board says; null = the standing text for the current state
     this.shown = false;
   }
@@ -42,7 +46,9 @@ export class Proof {
   get style() { return this.g.settings.noGuessStyle === 'B' ? 'B' : 'A'; }
   get top() { return this.tests[this.tests.length - 1] || null; }
   /** a question or a what-if is open: the real board holds still until it is settled */
-  get busy() { return this.ask >= 0 || this.tests.length > 0; }
+  get busy() { return this.ask >= 0 || this.want >= 0 || this.tests.length > 0; }
+  /** style A: a square is waiting for its reason, to be crossed off (ask) or to take a pup (want) */
+  get asking() { return this.ask >= 0 || this.want >= 0; }
   name(u) { return this.g.unitName(u); }
 
   /** what is known right now: the real board, plus every what-if in progress */
@@ -83,7 +89,7 @@ export class Proof {
   input(fn) {
     const g = this.g;
     if (!this.on || g.done || g.failed) return false;
-    this.msg = null; this.offer = -1;
+    this.msg = null;
     const r = fn();
     this.paint(); this.notify();
     return r;
@@ -93,7 +99,7 @@ export class Proof {
   /** the second tap of a double-tap: seat a pup, once the first tap is taken back */
   doubleTap(i, first) {
     if (first === 'picked' || first === 'stopped') return; // style B: the first tap already said it all
-    if (first === 'lit' && this.ask < 0) return;           // style A: the first tap finished the proof
+    if (first === 'lit' && !this.asking) return;           // style A: the first tap finished the proof
     this.input(() => {
       if (first === 'lit') { const st = this.st(); this.toggleLit(st, i); this.judgeA(st); return; } // two quick taps on a blocker: on, then off
       if (first === 'tested') { // style B: the first tap put a ghost here. Would the pup have to sit here anyway?
@@ -125,12 +131,11 @@ export class Proof {
   }
   /** a button under the board */
   press(id) {
-    const offer = this.offer;
     this.input(() => {
       if (id === 'cancel') this.back();
       else if (id === 'stop') this.stopAll();
       else if (id === 'clear') this.clearReason();
-      else if (id === 'whatif') { if (offer >= 0) this.startTest(offer); }
+      else if (id === 'whatif') { if (this.want >= 0) this.startTest(this.want); }
       else if (id === 'style') { const g = this.g; g.settings.noGuessStyle = this.style === 'B' ? 'A' : 'B'; this.stopAll(); if (g.hooks.onSettings) g.hooks.onSettings(g); }
     });
   }
@@ -142,7 +147,7 @@ export class Proof {
     if (!this.busy) { this.clearReason(); return false; }
     this.input(() => {
       const t = this.top;
-      if (this.ask >= 0 || !t.steps.length) this.back();
+      if (this.asking || !t || !t.steps.length) this.back();
       else { t.steps.pop(); this.clearReason(); sfx.clear(); }
     });
     return true;
@@ -163,22 +168,22 @@ export class Proof {
   tapA(i) {
     const g = this.g, s = g.cells[i], inTest = this.tests.length > 0;
     if (!inTest && s !== EMPTY) {
-      if (this.ask >= 0 || g.given[i]) return false; // the real board holds still while a question is open
+      if (this.asking || g.given[i]) return false; // the real board holds still while a question is open
       g.clearCell(i);
       return 'cleared';
     }
-    if (i === this.ask) { this.ask = -1; this.clearReason(); return 'unasked'; } // the "?" again: never mind
+    if (i === this.ask || i === this.want) { this.ask = -1; this.want = -1; this.clearReason(); return 'unasked'; } // the waiting square again: never mind
     const st = this.st();
     if (inTest && (s !== EMPTY || !st.cand[i] || st.pup[i])) {                   // inside a what-if a dark square says "nothing fits here any more"
       if (i !== this.top.cell) this.deadEnd(st, i);
       return 'picked';
     }
     if (!st.cand[i]) {                                                           // a seated pup already blocks it
-      if (this.ask >= 0) return false;
+      if (this.asking) return false;
       g.markCell(i);
       return 'crossed';
     }
-    if (this.ask >= 0) { this.toggleLit(st, i); this.judgeA(st); return 'lit'; }
+    if (this.asking) { this.toggleLit(st, i); this.judgeA(st); return 'lit'; }
     const us = this.reason(st);
     if (us.length && rulesOut(st, us, i)) {                                      // the lit squares block this one too
       const why = this.whyOut(st, us, i);
@@ -209,11 +214,39 @@ export class Proof {
     const us = this.reason(st);
     if (!us.length) return;
     if (this.tests.length && stuck(st, us)) { this.refute(st, us); return; }
+    if (this.want >= 0) { this.judgeWant(st, us); return; }
     if (this.ask < 0 || !rulesOut(st, us, this.ask)) return;
     const i = this.ask, why = this.whyOut(st, us, i);
     this.ask = -1; this.lit.clear(); this.picks = why; this.used = true;
     this.cross(i);
     this.say('Crossed off', `${cap(this.g.unitList(why))} would have nowhere to go. The lit squares stay lit: tap any other square they block.`, 'happy');
+  }
+  /** the other open squares in the row, column and yard of square i: what stands between it and a pup */
+  rivals(st, i) {
+    const out = new Set();
+    for (const u of unitsThrough(st, i)) for (const c of st.unitCells(u.type, u.idx)) if (c !== i) out.add(c);
+    return out;
+  }
+  /**
+   * Pup first: a pup was asked for on a square that is not yet the only spot, and the player is pointing at why the
+   * other squares are out. Once the reason rules out every other square of its row, column or yard, the pup sits.
+   * Rivals it rules out short of that are crossed off, so the reasons can come one at a time.
+   */
+  judgeWant(st, us) {
+    const g = this.g, i = this.want;
+    const out = [...this.rivals(st, i)].filter(c => rulesOut(st, us, c));
+    if (!out.length) return;
+    const gone = new Set(out);
+    const unit = unitsThrough(st, i).find(u => !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).every(c => c === i || gone.has(c)));
+    const why = [];
+    for (const c of (unit ? st.unitCells(unit.type, unit.idx).filter(c => c !== i) : out)) for (const u of this.whyOut(st, us, c)) if (!why.some(w => same(w, u))) why.push(u);
+    if (unit) {
+      this.seat(i, unit, `${cap(g.unitList(why))} ${plural(why.length, 'rules', 'rule')} out every other square of ${this.name(unit)}, so the pup sits.`);
+      return;
+    }
+    for (const c of out) this.cross(c);
+    this.lit.clear(); this.picks = why; this.used = true;
+    this.say('Why here?', `${cap(g.unitList(why))} ${plural(why.length, 'rules', 'rule')} out ${out.length} of the flashing squares, now crossed off. The pup still has rivals: light what rules those out.`);
   }
   /** lit squares that a pup on the "?" square would not clash with: why a complete group still proves nothing */
   missCells(st, us) {
@@ -225,12 +258,13 @@ export class Proof {
   }
   /** where the reason stands, in words */
   statusA(st) {
-    const g = this.g, us = this.reason(st), cells = this.litCells(st), ask = this.ask;
-    if (ask < 0) {
+    const g = this.g, us = this.reason(st), cells = this.litCells(st), ask = this.ask, want = this.want;
+    if (ask < 0 && want < 0) {
       if (us.length) return { title: `Lit: ${g.unitList(us)}`, text: `Now tap a square ${plural(us.length, 'it rules', 'they rule')} out.` };
       return { title: 'Squares lit', text: 'Tap the square they rule out. They have to be every open square of a row, column or yard.' };
     }
-    const title = 'Why is this square out?';
+    const title = want >= 0 ? 'Why here?' : 'Why is this square out?';
+    if (!cells.size && want >= 0) return { title, text: `The flashing squares could still take this pup. Light what rules them out${this.tests.length ? '' : ', or try the pup in a what-if'}.` };
     if (!cells.size) return { title, text: 'Tap the squares that block it. Hold a square to take its whole yard; a fence tab takes a row or column.' };
     if (!us.length) {
       let best = null; // the row, column or yard through every lit square that is closest to complete
@@ -243,6 +277,7 @@ export class Proof {
       if (best) return { title, text: `${cap(this.name(best.u))} has ${best.more} more open ${plural(best.more, 'square', 'squares')}. Light ${plural(best.more, 'it', 'them')} too: the lit squares must be all it has left.` };
       return { title, text: 'These are not yet every open square of a row, column or yard. Keep going, or clear and start again.' };
     }
+    if (want >= 0) return { title, text: 'The lit squares do not rule out any of the flashing squares yet: a pup on one of those would still leave them room.' };
     if (us.length === 1) {
       const u = us[0];
       if (st.unitHasPup(u.type, u.idx)) return { title, text: `${cap(this.name(u))} already has its pup, so it cannot be the reason.` };
@@ -335,7 +370,7 @@ export class Proof {
   /** a pup is asked for on i: it sits only where a row, column or yard leaves no other square */
   trySeat(i) {
     const g = this.g, inTest = this.tests.length > 0, gh = this.ghostAt(i);
-    this.ask = -1;
+    this.ask = -1; this.want = -1;
     if (g.given[i] || g.cells[i] === PUP || gh === 'q' || gh === 'pup') return false;
     if (g.cells[i] === MARK || gh === 'x') {
       this.say('Crossed off', inTest ? 'That square is ruled out here. Undo steps back inside a what-if.' : 'You crossed this square off. Clear the cross first if you have changed your mind.');
@@ -346,21 +381,33 @@ export class Proof {
     const u = forcedIn(st, i);
     if (u) return this.seat(i, u);
     if (this.style === 'B') { this.startTest(i); return false; }
-    const rivals = new Set();
-    for (const r of unitsThrough(st, i)) for (const c of st.unitCells(r.type, r.idx)) if (c !== i) rivals.add(c);
-    this.flash(rivals, 'rival', 1700);
-    if (inTest) { this.say('Not the only spot yet', 'The flashing squares could still take this pup. Rule them out first.'); return false; }
-    this.offer = i;
-    this.say('Not the only spot yet', 'The flashing squares could still take this pup. Rule them out first, or try the pup in a what-if.', 'think', [{ id: 'whatif', label: 'What if…?', primary: true }]);
-    return false;
+    // style A, pup first: the pup waits, the squares that could still take it flash, and the player points at why they are out
+    if (this.used) this.clearReason();
+    this.want = i; sfx.tap();
+    this.judgeA(st); // squares lit beforehand may already be the reason
+    return g.cells[i] === PUP || this.ghostAt(i) === 'pup';
   }
-  seat(i, u) {
+  /** a pup sits on i because unit u has no other square for it: on the real board, or inside the innermost what-if */
+  seat(i, u, note) {
     const g = this.g, t = this.top;
-    this.ask = -1; this.clearReason();
-    if (!t) return g.placePup(i);
+    this.ask = -1; this.want = -1; this.clearReason();
+    if (!t) { const ok = g.placePup(i); if (ok && note && !g.done) this.say('Seated', note, 'happy'); return ok; }
     t.steps.push({ t: 'pup', i }); sfx.tap();
-    this.say(this.testTitle(), `Then ${this.name(u)}’s pup has to sit there. ${this.style === 'B' ? 'Who has no room now?' : 'Keep going.'}`);
+    if (this.st().solved()) { this.commit(); return true; }
+    const why = note || `Then ${this.name(u)}’s pup has to sit there.`;
+    this.say(this.testTitle(), `${why} ${this.style === 'B' ? 'Who has no room now?' : 'Keep going.'}`);
     return true;
+  }
+  /**
+   * A what-if has seated every pup without a clash. That is a whole solution, and a board has only one, so the pup
+   * on trial was right after all: every pup of the what-if sits for real.
+   */
+  commit() {
+    const g = this.g, cells = [];
+    for (const t of this.tests) { cells.push(t.cell); for (const x of t.steps) if (x.t === 'pup') cells.push(x.i); }
+    this.stopAll(); this.msg = null;
+    if (g.hooks.onToast) g.hooks.onToast('It all fits, so that is the answer 🐾');
+    g.seatProven(cells);
   }
   /** put a pup on trial on square i */
   startTest(i) {
@@ -368,7 +415,7 @@ export class Proof {
     if (this.tests.length >= (B ? MAX_DEPTH : 1)) { this.say('One at a time', B ? `That is ${MAX_DEPTH} what-ifs deep. Settle one first.` : 'Finish this what-if first.'); return false; }
     g.clearHint(true);
     if (!B || this.used) this.clearReason(); // style B: units picked beforehand stay as the ones to watch
-    this.ask = -1;
+    this.ask = -1; this.want = -1;
     this.tests.push({ cell: i, steps: [] });
     g.start(); sfx.hint();
     if (B) this.judgeB(this.st());
@@ -378,7 +425,7 @@ export class Proof {
   refute(st, us) {
     const g = this.g, why = this.minimal(us, sub => stuck(st, sub));
     const t = this.tests.pop();
-    this.ask = -1; this.lit.clear();
+    this.ask = -1; this.want = -1; this.lit.clear();
     if (this.style === 'B') { this.picks = why.slice(); this.used = true; } else { this.picks = []; this.used = false; }
     this.cross(t.cell);
     const cells = new Set(); for (const u of why) for (const c of g.unitCells(u)) cells.add(c);
@@ -386,17 +433,18 @@ export class Proof {
     this.say('Ruled out', `${cap(g.unitList(why))} would have nowhere to go, so no pup on that square.${this.tests.length ? ' You are back in the what-if before it.' : ''}`, 'happy');
   }
   back() {
-    if (this.ask >= 0) { this.ask = -1; this.clearReason(); return true; }
+    if (this.asking) { this.ask = -1; this.want = -1; this.clearReason(); return true; }
     if (this.tests.length) { this.tests.pop(); this.clearReason(); sfx.clear(); return true; }
     return false;
   }
-  stopAll() { this.tests = []; this.ask = -1; this.clearReason(); }
+  stopAll() { this.tests = []; this.ask = -1; this.want = -1; this.clearReason(); }
   /** forget everything in progress (restart, a hint, the mode or its style switched, the board solved) */
-  reset() { this.stopAll(); this.msg = null; this.offer = -1; this.paint(); this.notify(); }
+  reset() { this.stopAll(); this.msg = null; this.paint(); this.notify(); }
   /** the real board changed underneath: keep what still makes sense */
   sync() {
     const g = this.g;
     if (this.ask >= 0 && g.cells[this.ask] !== EMPTY) this.ask = -1;
+    if (this.want >= 0 && g.cells[this.want] !== EMPTY) this.want = -1;
     this.paint();
     if ((this.on && !g.done && !g.failed) !== this.shown) this.notify();
   }
@@ -415,10 +463,11 @@ export class Proof {
   }
   buttons() {
     const out = [], B = this.style === 'B', hasReason = this.lit.size > 0 || this.picks.length > 0;
-    if (this.ask >= 0) out.push({ id: 'cancel', label: 'Never mind' });
+    if (this.asking) out.push({ id: 'cancel', label: 'Never mind' });
     else if (this.tests.length) out.push({ id: 'cancel', label: B ? 'Never mind' : 'Stop' });
+    if (this.want >= 0 && !this.tests.length) out.push({ id: 'whatif', label: 'What if…?' });
     if (hasReason) out.push({ id: 'clear', label: 'Clear' });
-    if (this.ask >= 0 && this.tests.length) out.push({ id: 'stop', label: 'Stop what-if' });
+    if (this.asking && this.tests.length) out.push({ id: 'stop', label: 'Stop what-if' });
     if (!this.busy && !hasReason) out.push({ id: 'style', label: `Switch to ${B ? 'A' : 'B'}` });
     return out;
   }
@@ -429,7 +478,7 @@ export class Proof {
     let m = this.msg;
     if (!m) {
       const A = this.style === 'A';
-      if (A && (this.ask >= 0 || this.lit.size || this.picks.length)) m = this.statusA(this.st());
+      if (A && (this.asking || this.lit.size || this.picks.length)) m = this.statusA(this.st());
       else if (!A && this.picks.length) m = this.statusB(this.st());
       else m = this.standing();
     }
@@ -458,11 +507,14 @@ export class Proof {
     if (on && B) { for (const u of this.picks) for (const i of g.unitCells(u)) ev.add(i); }
     else if (on) { for (const i of this.litCells(st)) ev.add(i); }
     const miss = on ? this.missCells(st, us) : new Set();
+    const rivals = on && !B && this.want >= 0 ? this.rivals(st, this.want) : new Set();
     for (let k = 0; k < g.N; k++) {
       const d = g.cellEls[k], c = d.classList, gh = inTest ? this.ghostAt(k) : null, ghost = gh === 'q' || gh === 'pup';
       c.toggle('ev', ev.has(k));
       c.toggle('miss', miss.has(k));
       c.toggle('ask', on && k === this.ask);
+      c.toggle('want', on && k === this.want);
+      c.toggle('rival', rivals.has(k));
       c.toggle('wi', inTest && !!st.cand[k] && !st.pup[k]);
       c.toggle('tx', gh === 'x');
       c.toggle('ghost-q', gh === 'q');

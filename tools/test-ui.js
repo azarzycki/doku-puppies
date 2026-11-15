@@ -91,7 +91,7 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
     let unforced = -1; for (let i = 0; i < g.N && unforced < 0; i++) if (open(i) && !forcedIn(st, i) && !(best && (i === best.target || best.others.includes(i) || best.cells.includes(i)))) unforced = i;
     return { best, unforced };
   });
-  const ui = () => app(page, a => { const g = a.game, q = s => document.querySelectorAll(s).length; return { ask: g.proof.ask, lit: q('#board .cell.ev'), tabsOn: q('#board .unit-tab.on'), tests: g.proof.tests.length, picks: g.proof.picks.length, whatif: document.getElementById('board').classList.contains('whatif'), ghosts: q('#board .cell.ghost'), rivals: q('#board .cell.rival'), title: document.getElementById('basis-title').textContent, hidden: document.getElementById('basis-bubble').classList.contains('hidden'), buttons: [...document.querySelectorAll('#basis-actions button')].map(b => b.dataset.act).join() }; });
+  const ui = () => app(page, a => { const g = a.game, q = s => document.querySelectorAll(s).length; return { ask: g.proof.ask, want: g.proof.want, lit: q('#board .cell.ev'), tabsOn: q('#board .unit-tab.on'), tests: g.proof.tests.length, picks: g.proof.picks.length, whatif: document.getElementById('board').classList.contains('whatif'), ghosts: q('#board .cell.ghost'), rivals: q('#board .cell.rival'), title: document.getElementById('basis-title').textContent, hidden: document.getElementById('basis-bubble').classList.contains('hidden'), buttons: [...document.querySelectorAll('#basis-actions button')].map(b => b.dataset.act).join() }; });
   const tapCell = async i => { const c = await centre(i); await page.mouse.click(c.x, c.y); await page.waitForTimeout(400); };
   const dblCell = async i => { const c = await centre(i); await page.mouse.click(c.x, c.y); await page.waitForTimeout(90); await page.mouse.click(c.x, c.y); await page.waitForTimeout(450); };
   const holdCell = async i => { const c = await centre(i); await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(520); await page.mouse.up(); await page.waitForTimeout(250); };
@@ -132,10 +132,10 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   check((await app(page, a => a.game.proof.picks.map(u => u.type).join())) === 'row,reg', 'keyboard R and Y name the cursor row and yard');
   await app(page, a => a.game.proof.press('clear'));
   await page.mouse.click(1, 1); // back to pointer mode
-  // a pup that is not forced is refused; the squares that could still take it flash; a what-if is offered
+  // a pup that is not forced waits for its reason: the squares that could still take it flash, and a what-if is offered
   await dblCell(pf.unforced);
   u0 = await ui();
-  check((await cellOf(page, pf.unforced)) === 0 && u0.tests === 0 && u0.rivals > 0 && u0.title === 'Not the only spot yet' && u0.buttons === 'whatif', 'A: double-tap on a square that is not the only spot is refused, with its rivals flashing (' + JSON.stringify(u0) + ')');
+  check((await cellOf(page, pf.unforced)) === 0 && u0.tests === 0 && u0.want === pf.unforced && u0.rivals > 0 && u0.title === 'Why here?' && u0.buttons === 'cancel,whatif', 'A: a double-tap on a square that is not the only spot leaves the pup waiting for its reason, with its rivals flashing (' + JSON.stringify(u0) + ')');
   await page.locator('#basis-actions [data-act="whatif"]').click(); await page.waitForTimeout(400);
   u0 = await ui();
   check(u0.tests === 1 && u0.whatif && u0.ghosts === 1 && u0.title === 'What if a pup sat here?' && (await cellOf(page, pf.unforced)) === 0, 'A: the What if…? button puts a ghost pup on trial (' + JSON.stringify(u0) + ')');
@@ -244,7 +244,7 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
   check(await page.$('.board-frame svg.terrain') !== null, 'terrain SVG drawn');
   // no-guessing mode end to end, once in each style: every step the hint engine takes is entered through the game
   const solveIn = (style, stopAt = '') => page.evaluate(async ({ style, stopAt }) => {
-    const { nextDeduction } = await import('./js/engine.js');
+    const { nextDeduction, forcedIn, rulesOut, unitHas, unitsThrough } = await import('./js/engine.js');
     const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n;
     a.closeAllDialogs();
     g.restart();
@@ -262,9 +262,14 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
       P.press('clear');
     }
     const kinds = {}; let rejected = '', guard = 0, flip = 0;
+    // a pup x that is not the only spot yet, and a unit u that on its own rules out every other square of x’s row, column or yard
+    const pupFirst = () => { const st = P.st(); for (let x = 0; x < g.N; x++) { if (!g.solution[x] || !st.cand[x] || st.pup[x] || forcedIn(st, x)) continue;
+      for (const type of ['reg', 'row', 'col']) for (let idx = 0; idx < n; idx++) { const u = { type, idx }; if (st.unitHasPup(type, idx) || unitHas(st, u, x)) continue;
+        if (unitsThrough(st, x).some(v => !st.unitHasPup(v.type, v.idx) && st.unitCells(v.type, v.idx).every(c => c === x || rulesOut(st, [u], c)))) return { x, u }; } } return null; };
     while (!g.done && !rejected && guard++ < 600) {
       const step = nextDeduction(g.puzzle, g.board(), g.puzzle.solution); if (!step) break;
       const w = step.why;
+      if (stopAt === 'pupfirst') { const f = pupFirst(); if (f) return f; }
       if (stopAt && w.kind === stopAt) return { stop: step.place.length ? step.place[0] : step.eliminate[0] }; // leave this step for real pointer input
       kinds[w.kind] = (kinds[w.kind] || 0) + 1;
       if (w.kind === 'basic') { for (const i of step.eliminate) { P.tap(i); if (g.cells[i] !== 1) rejected = 'basic'; } }
@@ -341,6 +346,17 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
         return res;
       });
       check(nested.found && nested.asked && nested.insideA && nested.sniff && nested.panelBack && nested.outA && nested.testB && nested.insideB && nested.undoB && nested.outB, 'both styles: a square is crossed off inside a what-if and the real board is untouched; Sniff ends a what-if (' + JSON.stringify(nested) + ')');
+      // pup first on the real board: ask for a pup that is not the only spot yet, then name the unit that rules its rivals out
+      const pf1 = await solveIn('A', 'pupfirst');
+      const got = pf1.u ? await page.evaluate(({ x, u }) => {
+        const g = window.dokuPuppies.game, P = g.proof, r = { before: g.cells[x] };
+        r.waits = g.tryPlacePup(x) === false && P.want === x; r.rivals = document.querySelectorAll('#board .cell.rival').length;
+        r.buttons = [...document.querySelectorAll('#basis-actions button')].map(b => b.dataset.act).join();
+        if (u.type === 'reg') P.hold(g.puzzle.regions.indexOf(u.idx)); else P.tab(u);
+        r.after = g.cells[x]; r.busy = P.busy; r.hearts = g.hearts; r.title = document.getElementById('basis-title').textContent;
+        return r;
+      }, pf1) : {};
+      check(!!pf1.u && got.before === 0 && got.waits && got.rivals > 0 && got.buttons === 'cancel,whatif' && got.after === 2 && !got.busy && got.hearts === 3 && got.title === 'Seated', 'A, pup first: a pup asked for early waits, and sits once the named unit rules out its rivals (' + JSON.stringify({ pf1, got }) + ')');
       // real pointer input on a pup's only spot: one tap says so, a double-tap seats it; then drags
       const centreOf = async i => { const b = await page.locator('#board .cell').nth(i).boundingBox(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; };
       for (const style of ['A', 'B']) {
@@ -365,6 +381,38 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
       await page.waitForTimeout(900);
     }
   }
+  // a position from play (level 123, style A): a what-if on r9c9 that has run on to seven pups. The player wants a pup on
+  // r3c8 "because rows 1 and 6 take columns 1 and 10 between them": pup first, then the two rows. After that the what-if
+  // fills the whole board, which has to count as solving it.
+  await app(page, a => a.go('game', { kind: 'level', id: 123 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 123; });
+  const played = await page.evaluate(() => {
+    const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n, at = (r, c) => (r - 1) * n + (c - 1);
+    a.closeAllDialogs();
+    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; g.settings = a.profile.settings; g.syncMode();
+    const real = { 1: [2, 3, 7, 9], 2: [2, 7, 9], 3: [2, 3, 7, 9], 4: [5, 7, 9], 5: [2, 6, 7, 9], 6: [2, 3, 4, 7, 9], 7: [2, 5, 7], 8: [2, 3, 6, 8, 10], 9: [4, 6, 8], 10: [2, 3, 4, 7, 9] };
+    for (const r in real) for (const c of real[r]) { g.cells[at(Number(r), c)] = 1; g.paintCell(at(Number(r), c), false); }
+    g.changed();
+    g.tryPlacePup(at(9, 9)); P.press('whatif');
+    P.top.steps.push({ t: 'x', i: at(4, 1) }, { t: 'x', i: at(4, 3) }, { t: 'x', i: at(10, 1) });
+    for (const [r, c] of [[2, 3], [4, 2], [5, 5], [7, 4], [8, 7], [10, 6]]) P.top.steps.push({ t: 'pup', i: at(r, c) });
+    P.refresh();
+    const res = {};
+    res.waits = g.tryPlacePup(at(3, 8)) === false && P.want === at(3, 8) && document.getElementById('basis-title').textContent === 'Why here?';
+    res.rivals = [...document.querySelectorAll('#board .cell.rival')].map(d => Number(d.dataset.i)).sort((x, y) => x - y).join() === [at(1, 10), at(3, 10), at(6, 8)].join();
+    P.tab({ type: 'row', idx: 0 }); res.oneRow = P.want === at(3, 8) && P.ghostAt(at(3, 8)) === null;
+    P.tab({ type: 'row', idx: 5 }); res.seated = P.want < 0 && P.ghostAt(at(3, 8)) === 'pup' && g.cells[at(3, 8)] === 0;
+    g.undo(); res.undone = P.ghostAt(at(3, 8)) === null && P.tests.length === 1;
+    // the other way round: cross off the rival r3c10 with the same two rows, and the pup has its only spot
+    res.asked = P.tap(at(3, 10)) === 'asked'; P.tab({ type: 'row', idx: 0 }); P.tab({ type: 'row', idx: 5 });
+    res.crossed = P.ghostAt(at(3, 10)) === 'x' && g.tryPlacePup(at(3, 8)) === true;
+    res.last = g.tryPlacePup(at(1, 1)) === true && !g.done && g.tryPlacePup(at(6, 10)) === true;
+    res.won = g.done && !P.busy && Array.from(g.cells).filter(v => v === 2).length === n && g.hearts === 3 && !document.querySelector('#board .cell.ghost') && !document.getElementById('board').classList.contains('whatif');
+    a.profile.settings.noGuess = false;
+    return res;
+  });
+  check(Object.values(played).every(Boolean), 'A, from play: the pup waits for its reason, two rows seat it inside the what-if, and a what-if that fills the board solves it (' + JSON.stringify(played) + ')');
+  await page.waitForTimeout(900);
 });
 
 await session('TV keyboard', { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 }, async (page) => {
