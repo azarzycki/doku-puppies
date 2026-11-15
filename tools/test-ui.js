@@ -413,6 +413,28 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
   });
   check(Object.values(played).every(Boolean), 'A, from play: the pup waits for its reason, two rows seat it inside the what-if, and a what-if that fills the board solves it (' + JSON.stringify(played) + ')');
   await page.waitForTimeout(900);
+  // from play (level 124, style A): r9c10 is column 10's pup because columns 5 to 9 need the yards in between. That names
+  // five whole columns; a limit of four used to refuse the fifth. The panel names only what the proof needs: columns 5 to 8.
+  await app(page, a => a.go('game', { kind: 'level', id: 124 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 124; });
+  const five = await page.evaluate(() => {
+    const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n, at = (r, c) => (r - 1) * n + (c - 1);
+    a.closeAllDialogs();
+    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; g.settings = a.profile.settings; g.syncMode();
+    const X = { 1: [4, 5, 6, 7, 8], 2: [4, 5, 6, 8], 3: [4, 10], 4: [4, 5, 9], 5: [4, 5], 6: [4], 7: [4, 5], 8: [3, 10], 9: [3, 5, 6, 7, 8], 10: [4, 5, 6, 7, 9] };
+    for (const r in X) for (const c of X[r]) { g.cells[at(Number(r), c)] = 1; g.paintCell(at(Number(r), c), false); }
+    g.changed();
+    const res = {};
+    res.waits = g.tryPlacePup(at(9, 10)) === false && P.want === at(9, 10);
+    for (const c of [6, 7, 8, 9]) P.tab({ type: 'col', idx: c - 1 });
+    res.fourNotEnough = P.want === at(9, 10) && P.picks.length === 4;
+    P.tab({ type: 'col', idx: 4 });
+    res.seated = g.cells[at(9, 10)] === 2 && P.want < 0 && g.hearts === 3;
+    res.said = document.getElementById('basis-title').textContent + ': ' + document.getElementById('basis-text').textContent;
+    a.profile.settings.noGuess = false;
+    return res;
+  });
+  check(five.waits && five.fourNotEnough && five.seated && five.said === 'Seated: Column 5, column 6, column 7 and column 8 rule out every other square of column 10, so the pup sits.', 'A, from play: five whole columns can be named, and they seat the pup (' + JSON.stringify(five) + ')');
 });
 
 await session('TV keyboard', { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 }, async (page) => {

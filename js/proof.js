@@ -23,8 +23,8 @@ import { proofState, forcedIn, stuck, rulesOut, unitsWithin, unitHas, unitsThrou
 import { sfx, haptic } from './sound.js';
 
 const EMPTY = 0, MARK = 1, PUP = 2;
-const MAX_PICKS = 4; // rows / columns / yards that one reason may name whole
 const MAX_DEPTH = 3; // style B: what-ifs inside what-ifs
+const UNIT_ORDER = { row: 0, col: 1, reg: 2 };
 
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const same = (a, b) => a.type === b.type && a.idx === b.idx;
@@ -75,12 +75,16 @@ export class Proof {
     if (this.style === 'A') for (const u of unitsWithin(st, this.litCells(st))) if (!us.some(p => same(p, u))) us.push(u);
     return us;
   }
-  /** the fewest of these units that still make the point, for saying why */
+  /**
+   * A few of these units that still make the point, for saying why: one on its own if one will do, otherwise every unit
+   * the point needs (drop each in turn, from the last, and keep it only if the rest no longer make the point). The units
+   * that only came in with the lit squares are last, so the ones the player named are the ones kept. Rows, then columns, then yards.
+   */
   minimal(us, test) {
     for (const u of us) if (test([u])) return [u];
-    for (let a = 0; a < us.length; a++) for (let b = a + 1; b < us.length; b++) if (test([us[a], us[b]])) return [us[a], us[b]];
-    for (let a = 0; a < us.length; a++) for (let b = a + 1; b < us.length; b++) for (let c = b + 1; c < us.length; c++) if (test([us[a], us[b], us[c]])) return [us[a], us[b], us[c]];
-    return us.slice();
+    let keep = us.slice();
+    for (let k = keep.length - 1; k >= 0; k--) { const rest = keep.filter((_, j) => j !== k); if (rest.length && test(rest)) keep = rest; }
+    return keep.sort((a, b) => UNIT_ORDER[a.type] - UNIT_ORDER[b.type] || a.idx - b.idx);
   }
 
   // ---------------------------------------------------------------- input
@@ -346,8 +350,7 @@ export class Proof {
   togglePick(u) {
     const k = this.picks.findIndex(p => same(p, u));
     if (k >= 0) this.picks.splice(k, 1);
-    else if (this.picks.length >= MAX_PICKS) { this.say('That is plenty', `One reason can name up to ${MAX_PICKS} rows, columns or yards. Clear one first.`); return false; }
-    else this.picks.push({ type: u.type, idx: u.idx });
+    else this.picks.push({ type: u.type, idx: u.idx }); // no limit: a reason is as big as the argument (lit squares never had one either)
     this.used = false;
     sfx.tap();
     return true;
