@@ -1,12 +1,12 @@
 // No-guessing mode: the reasons a player can give must cover every step the hint engine can take (completeness),
 // and must never rule out a square that belongs to the solution (soundness).
 //   node tools/test-proof.js [puzzles]
-import { Rng, generatePuzzle, initialState, findStep, proofState, forcedIn, stuck, rulesOut, unitsWithin } from '../js/engine.js';
+import { Rng, generatePuzzle, initialState, findStep, proofState, forcedIn, stuck, rulesOut, unitsWithin, crowdedBy } from '../js/engine.js';
 
 const rng = new Rng('proof-fuzz');
 const PUZZLES = Number(process.argv[2]) || 160;
 let puzzles = 0, bad = 0;
-const seen = {}, accepted = { units: 0, squares: 0 };
+const seen = {}, accepted = { units: 0, squares: 0, touch: 0, block: 0 };
 const fail = (...a) => { bad++; if (bad < 20) console.log('FAIL', ...a); };
 const t0 = Date.now();
 const same = (a, b) => a.type === b.type && a.idx === b.idx;
@@ -67,6 +67,14 @@ for (let k = 0; k < PUZZLES; k++) {
     for (let i = 0; i < n * n; i++) { if (sol.has(i)) { if (rng.chance(0.2)) board.pups.add(i); } else if (rng.chance(0.45)) board.marks.add(i); }
     const s = proofState(p, board);
     const open = []; for (let i = 0; i < n * n; i++) if (s.cand[i] && !s.pup[i]) open.push(i);
+    // free crosses: a square that crowds out a row, column or yard is never a solution square, and touching is a case of blocking
+    for (const i of open) {
+      const tc = crowdedBy(s, i, 'touch'), bc = crowdedBy(s, i, 'block');
+      if (tc) accepted.touch++;
+      if (bc) accepted.block++;
+      if ((tc || bc) && sol.has(i)) fail('UNSOUND free cross, n', n);
+      if (tc && !bc) fail('touching without blocking, n', n);
+    }
     for (let e = 0; e < 90; e++) {
       let us, how;
       if (e % 3) { us = rng.shuffle(units.slice()).slice(0, 1 + rng.int(4)); how = 'units'; }

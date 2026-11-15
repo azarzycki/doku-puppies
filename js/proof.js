@@ -8,7 +8,9 @@
  *   B  "ghost pup". Tap a square to try a pup on it. Every square that pup would block goes dark, and the player
  *      taps the row, column or yard that is left with no room.
  * Both are one argument (engine.rulesOut): a pup on the square would leave those units with no way to seat their
- * pups. Squares a seated pup blocks may be crossed freely, and a pup sits where a unit has one open square left.
+ * pups. Some crosses are free (settings.noGuessFree): squares a seated pup blocks, and by default a square that touches
+ * every open square left in a row, column or yard ("block": that would block them in any way). Free squares count as
+ * gone when deciding whether a pup has its only spot, and a pup sits where a unit has no other square left.
  *
  * A what-if (this.tests) is the board one level down: a pup on trial plus the proven moves made after it. The same
  * moves work inside it. When a row, column or yard has nowhere left (the player taps one of its squares, all dark by
@@ -19,7 +21,7 @@
  * Style A also takes a pup first: a double-tap on a square that is not yet the only spot leaves the pup waiting
  * (this.want) while the squares that could still take it flash, and it sits once the lit squares rule them out.
  */
-import { proofState, forcedIn, stuck, rulesOut, unitsWithin, unitHas, unitsThrough } from './engine.js';
+import { proofState, crowdedBy, stuck, rulesOut, unitsWithin, unitHas, unitsThrough } from './engine.js';
 import { sfx, haptic } from './sound.js';
 
 const EMPTY = 0, MARK = 1, PUP = 2;
@@ -50,6 +52,32 @@ export class Proof {
   /** style A: a square is waiting for its reason, to be crossed off (ask) or to take a pup (want) */
   get asking() { return this.ask >= 0 || this.want >= 0; }
   name(u) { return this.g.unitName(u); }
+
+  // ---------------------------------------------------------------- free crosses: what counts as obvious
+
+  /** settings.noGuessFree: 'pups' (only squares a seated pup blocks), 'touch' (default) or 'block' */
+  get freeLevel() { const f = this.g.settings.noGuessFree; return f === 'pups' || f === 'block' ? f : 'touch'; }
+  /**
+   * The row, column or yard a pup on i would leave with nowhere to go, when the setting counts that as obvious: at 'touch'
+   * only if the pup would touch every open square left in it, at 'block' if it would block them in any way.
+   */
+  crowd(st, i) { const f = this.freeLevel; return f === 'pups' ? null : crowdedBy(st, i, f); }
+  /** may square i be crossed off with no reason given? */
+  free(st, i) { return !st.pup[i] && (!st.cand[i] || !!this.crowd(st, i)); }
+  /** these units cannot all be seated: stuck, or one of them has open squares left that are all obviously out */
+  noRoom(st, us) {
+    if (stuck(st, us)) return true;
+    return us.some(u => !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).every(c => this.free(st, c)));
+  }
+  /** the row, column or yard that has no square left for its pup but i, counting free squares as gone; null when i is not the only spot */
+  onlySpot(st, i) {
+    if (!st.cand[i] || st.pup[i] || this.crowd(st, i)) return null;
+    for (const u of unitsThrough(st, i)) {
+      if (st.unitHasPup(u.type, u.idx)) continue;
+      if (st.unitCells(u.type, u.idx).every(c => c === i || this.free(st, c))) return u;
+    }
+    return null;
+  }
 
   /** what is known right now: the real board, plus every what-if in progress */
   st() {
@@ -107,7 +135,7 @@ export class Proof {
     this.input(() => {
       if (first === 'lit') { const st = this.st(); this.toggleLit(st, i); this.judgeA(st); return; } // two quick taps on a blocker: on, then off
       if (first === 'tested') { // style B: the first tap put a ghost here. Would the pup have to sit here anyway?
-        const t = this.tests.pop(), u = forcedIn(this.st(), i);
+        const t = this.tests.pop(), u = this.onlySpot(this.st(), i);
         if (u) { this.seat(i, u); return; }
         this.tests.push(t); return;
       }
@@ -118,7 +146,7 @@ export class Proof {
   /** remote OK / Enter: seat a pup that has to sit here, otherwise the same as a tap */
   ok(i) {
     return this.input(() => {
-      if (this.g.cells[i] === EMPTY && !this.ghostAt(i) && forcedIn(this.st(), i)) return this.trySeat(i);
+      if (this.g.cells[i] === EMPTY && !this.ghostAt(i) && this.onlySpot(this.st(), i)) return this.trySeat(i);
       return this.style === 'B' ? this.tapB(i) : this.tapA(i);
     });
   }
@@ -160,7 +188,7 @@ export class Proof {
   canDrag(i) {
     if (this.busy) return false;
     const st = this.st();
-    if (!st.cand[i]) return true;
+    if (this.free(st, i)) return true;
     const us = this.reason(st);
     if (!us.length || !rulesOut(st, us, i)) return false;
     this.used = true;
@@ -188,6 +216,7 @@ export class Proof {
       return 'crossed';
     }
     if (this.asking) { this.toggleLit(st, i); this.judgeA(st); return 'lit'; }
+    if (this.crowd(st, i)) { this.cross(i); return 'crossed'; }                  // obvious: a pup here would crowd out a row, column or yard
     const us = this.reason(st);
     if (us.length && rulesOut(st, us, i)) {                                      // the lit squares block this one too
       const why = this.whyOut(st, us, i);
@@ -195,7 +224,7 @@ export class Proof {
       this.say('Crossed off', `Same reason: ${g.unitList(why)} would have nowhere to go.`, 'happy');
       return 'crossed';
     }
-    const only = forcedIn(st, i);
+    const only = this.onlySpot(st, i);
     if (only) { this.say('Only spot', `This is the only square left for ${this.name(only)}, so it cannot be ruled out. Double-tap to seat the pup.`); return false; }
     if (this.used) this.clearReason();
     this.ask = i; sfx.tap();
@@ -217,7 +246,7 @@ export class Proof {
   judgeA(st) {
     const us = this.reason(st);
     if (!us.length) return;
-    if (this.tests.length && stuck(st, us)) { this.refute(st, us); return; }
+    if (this.tests.length && this.noRoom(st, us)) { this.refute(st, us); return; }
     if (this.want >= 0) { this.judgeWant(st, us); return; }
     if (this.ask < 0 || !rulesOut(st, us, this.ask)) return;
     const i = this.ask, why = this.whyOut(st, us, i);
@@ -228,7 +257,7 @@ export class Proof {
   /** the other open squares in the row, column and yard of square i: what stands between it and a pup */
   rivals(st, i) {
     const out = new Set();
-    for (const u of unitsThrough(st, i)) for (const c of st.unitCells(u.type, u.idx)) if (c !== i) out.add(c);
+    for (const u of unitsThrough(st, i)) for (const c of st.unitCells(u.type, u.idx)) if (c !== i && !this.free(st, c)) out.add(c);
     return out;
   }
   /**
@@ -241,11 +270,11 @@ export class Proof {
     const out = [...this.rivals(st, i)].filter(c => rulesOut(st, us, c));
     if (!out.length) return;
     const gone = new Set(out);
-    const unit = unitsThrough(st, i).find(u => !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).every(c => c === i || gone.has(c)));
+    const unit = unitsThrough(st, i).find(u => !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).every(c => c === i || gone.has(c) || this.free(st, c)));
     const why = [];
-    for (const c of (unit ? st.unitCells(unit.type, unit.idx).filter(c => c !== i) : out)) for (const u of this.whyOut(st, us, c)) if (!why.some(w => same(w, u))) why.push(u);
+    for (const c of (unit ? st.unitCells(unit.type, unit.idx).filter(c => c !== i && !this.free(st, c)) : out)) for (const u of this.whyOut(st, us, c)) if (!why.some(w => same(w, u))) why.push(u);
     if (unit) {
-      this.seat(i, unit, `${cap(g.unitList(why))} ${plural(why.length, 'rules', 'rule')} out every other square of ${this.name(unit)}, so the pup sits.`);
+      this.seat(i, unit, why.length ? `${cap(g.unitList(why))} ${plural(why.length, 'rules', 'rule')} out every other square of ${this.name(unit)}, so the pup sits.` : undefined);
       return;
     }
     for (const c of out) this.cross(c);
@@ -303,13 +332,14 @@ export class Proof {
     const st = this.st();
     if (t && (s !== EMPTY || !st.cand[i] || st.pup[i])) { this.claim(st, i); return 'picked'; } // a dark square: "nothing fits here any more"
     if (!st.cand[i]) { g.markCell(i); return 'crossed'; }                                       // a seated pup already blocks it
+    if (this.crowd(st, i)) { this.cross(i); return 'crossed'; }                                 // obvious: a pup here would crowd out a row, column or yard
     if (this.picks.length && rulesOut(st, this.picks, i)) {                                     // the same units as last time
       const why = this.whyOut(st, this.picks, i);
       this.used = true; this.cross(i);
       this.say('Crossed off', `Same reason: ${g.unitList(why)} would have nowhere to go.`, 'happy');
       return 'crossed';
     }
-    const only = forcedIn(st, i);
+    const only = this.onlySpot(st, i);
     if (only) { this.say('Only spot', `This is the only square left for ${this.name(only)}. Double-tap to seat the pup.`); return false; }
     return this.startTest(i) ? 'tested' : false;
   }
@@ -318,9 +348,9 @@ export class Proof {
     const yard = unitsThrough(st, i)[2];
     if (this.deadEnd(st, i)) return;
     if (!this.picks.some(p => same(p, yard)) && !this.togglePick(yard)) return;
-    if (this.picks.length > 1) { if (stuck(st, this.picks)) this.refute(st, this.picks); else this.msg = null; } // several picks: statusB says how they stand
+    if (this.picks.length > 1) { if (this.noRoom(st, this.picks)) this.refute(st, this.picks); else this.msg = null; } // several picks: statusB says how they stand
   }
-  judgeB(st) { if (this.tests.length && this.picks.length && stuck(st, this.picks)) this.refute(st, this.picks); }
+  judgeB(st) { if (this.tests.length && this.picks.length && this.noRoom(st, this.picks)) this.refute(st, this.picks); }
   testTitle() { return this.tests.length > 1 ? 'And a pup here too?' : 'What if a pup sat here?'; }
   statusB(st) {
     const g = this.g, us = this.picks;
@@ -336,7 +366,7 @@ export class Proof {
   /** inside a what-if a dark square was tapped: if its yard, row or column has nowhere left, the what-if is settled */
   deadEnd(st, i) {
     const [row, col, yard] = unitsThrough(st, i);
-    const hit = [yard, row, col].find(u => stuck(st, [u]));
+    const hit = [yard, row, col].find(u => this.noRoom(st, [u]));
     if (hit) { this.refute(st, [hit]); return true; }
     const room = u => (st.unitHasPup(u.type, u.idx) ? `${this.name(u)} has its pup` : `${this.name(u)} has ${st.unitCells(u.type, u.idx).length} lit`);
     this.say(this.testTitle(), `Nothing through that square is stuck: ${room(yard)}, ${room(row)}, ${room(col)}.`);
@@ -381,7 +411,15 @@ export class Proof {
     }
     const st = this.st();
     if (!st.cand[i]) { this.say('Not here', 'A pup already rules this square out: it shares its row, column or yard, or sits right next to it.', 'sad'); return false; }
-    const u = forcedIn(st, i);
+    const cu = this.crowd(st, i);
+    if (cu) {
+      // inside a what-if this can be the dead end itself: the only square left for a row, column or yard is obviously out
+      const none = inTest && unitsThrough(st, i).find(u => !st.unitHasPup(u.type, u.idx) && this.noRoom(st, [u]));
+      if (none) { this.refute(st, [none]); return false; }
+      this.say('Not here', `A pup here would leave ${this.name(cu)} with nowhere to go.`, 'sad');
+      return false;
+    }
+    const u = this.onlySpot(st, i);
     if (u) return this.seat(i, u);
     if (this.style === 'B') { this.startTest(i); return false; }
     // style A, pup first: the pup waits, the squares that could still take it flash, and the player points at why they are out
@@ -426,7 +464,7 @@ export class Proof {
   }
   /** the innermost what-if has run into a dead end: its square is crossed off one level up */
   refute(st, us) {
-    const g = this.g, why = this.minimal(us, sub => stuck(st, sub));
+    const g = this.g, why = this.minimal(us, sub => this.noRoom(st, sub));
     const t = this.tests.pop();
     this.ask = -1; this.want = -1; this.lit.clear();
     if (this.style === 'B') { this.picks = why.slice(); this.used = true; } else { this.picks = []; this.used = false; }

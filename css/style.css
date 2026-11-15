@@ -253,6 +253,8 @@ body:not(.kb) .board.proof .cell.cursor::after { display: none; } /* the last-to
 .cell.ghost-q::before { content: "?"; position: absolute; top: -6%; right: -6%; width: 46%; height: 46%; display: grid; place-items: center; border-radius: 50%; background: #fff; color: var(--accent-ink); font-weight: 900; font-size: calc(var(--cell) * .3); line-height: 1; box-shadow: 0 1px 4px rgba(0, 0, 0, .4); z-index: 3; pointer-events: none; }
 .cell.tx .mark { opacity: .6; transform: scale(.82); }
 .style-chips { margin: 2px 0 6px; }
+.free-head { padding: 8px 0 6px; } .free-head b { display: block; } .free-head small { color: var(--muted); }
+.free-chips { margin: 0 0 10px; }
 
 /* landscape / wide: board left, controls right */
 @media (min-width: 720px) and (min-aspect-ratio: 5/4) {

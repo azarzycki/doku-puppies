@@ -55,6 +55,12 @@ function starsHtml(n, big = false) { return `<span class="stars ${big ? 'big' : 
 
 // ---------------------------------------------------------------- app
 
+const FREE_CROSSES = { // no-guessing mode: what may be crossed off with no reason given
+  pups: 'Only squares a seated pup blocks. Everything else needs a reason.',
+  touch: 'Squares a seated pup blocks, and a square that touches every open square left in a row, column or yard.',
+  block: 'Squares a seated pup blocks, and a square where a pup would block every open square left in a row, column or yard. This makes the Too crowded, Yard lock and Line lock hints free too.',
+};
+
 class App {
   constructor() {
     this.store = new Store();
@@ -605,6 +611,7 @@ class App {
   renderSettings() {
     const s = this.profile.settings;
     const el = $('#settings-form');
+    const free = s.noGuessFree === 'pups' || s.noGuessFree === 'block' ? s.noGuessFree : 'touch';
     const toggle = (id, label, sub) => `<label class="row-toggle"><span><b>${label}</b><small>${sub}</small></span><input type="checkbox" id="set-${id}" ${s[id] ? 'checked' : ''}><i class="switch"></i></label>`;
     el.innerHTML = `
       ${toggle('sound', 'Sound', 'Barks, pops and jingles')}
@@ -613,6 +620,8 @@ class App {
       ${toggle('noGuess', 'No guessing', 'Prove every move: a square is only crossed off, and a pup only seated, once the reason is shown')}
       <div class="chips style-chips">${[['A', 'A · Point at what blocks it'], ['B', 'B · Ghost pup']].map(([id, label]) => `<button class="chip ${(s.noGuessStyle === 'B' ? 'B' : 'A') === id ? 'on' : ''}" data-style="${id}">${label}</button>`).join('')}</div>
       <p class="muted small">Two ways of showing the reason are on trial. Pick one here, or switch under the board while you play.</p>
+      <div class="free-head"><b>Free crosses</b><small>${FREE_CROSSES[free]}</small></div>
+      <div class="chips free-chips">${[['pups', 'Seated pups'], ['touch', '+ Touching'], ['block', '+ Too crowded']].map(([id, label]) => `<button class="chip ${free === id ? 'on' : ''}" data-free="${id}">${label}</button>`).join('')}</div>
       ${toggle('showCoords', 'Show coordinates', 'Column,row in each square (handy with hints)')}
       ${toggle('bigText', 'Bigger text', 'For tablets and TVs across the room')}
       ${toggle('reduceMotion', 'Reduce motion', 'Fewer bouncy animations')}
@@ -631,6 +640,7 @@ class App {
     for (const id of ['sound', 'haptics', 'autoMark', 'noGuess', 'showCoords', 'bigText', 'reduceMotion']) {
       $('#set-' + id).addEventListener('change', e => { this.profile.settings[id] = e.target.checked; this.store.commit('settings'); this.applySettings(); if (id === 'sound' && e.target.checked) sfx.bark(); if (this.game) { this.game.settings = this.profile.settings; this.game.el?.classList.toggle('coords', !!this.profile.settings.showCoords); this.game.syncMode(); } });
     }
+    $$('.free-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.noGuessFree = b.dataset.free; this.store.commit('settings'); sfx.tap(); if (this.game) { this.game.settings = this.profile.settings; this.game.proof.refresh(); } this.renderSettings(); }));
     $$('.style-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.noGuessStyle = b.dataset.style; this.store.commit('settings'); sfx.tap(); if (this.game) { this.game.settings = this.profile.settings; this.game.syncMode(); } this.renderSettings(); }));
     $$('.mark-chips .chip').forEach(b => b.addEventListener('click', () => { this.profile.settings.markStyle = b.dataset.mark; this.store.commit('settings'); sfx.tap(); if (this.game) this.game.setMarkStyle(b.dataset.mark); this.renderSettings(); }));
     $('#sync-link').addEventListener('click', () => this.linkDevice());
@@ -693,7 +703,7 @@ class App {
         <ul><li><b>Tap</b> an empty square to cross it off ✕ (a pup can’t go there); tap again to clear it.</li><li><b>Double-tap</b> a square to seat a pup (or <b>hold</b> it). Tap a pup to send it home.</li>
         <li><b>Drag</b> across empty squares to cross off a bunch at once.</li><li><b>Remote / keyboard:</b> arrows move, OK/Enter cycles ✕ → 🐶 → empty. X crosses off, P seats a pup, U undoes, H sniffs.</li></ul></div>
       <div class="help-card"><h3>No guessing (optional)</h3>
-        <p>Switch it on in Settings to prove every move. Squares a seated pup blocks can still be crossed off freely, and a pup sits (double-tap) where its row, column or yard has no other open square. Everything else needs a reason, and there are two ways to show it. Try both: the pup under the board has a switch.</p>
+        <p>Switch it on in Settings to prove every move. Some crosses are free: squares a seated pup blocks and, unless you change <b>Free crosses</b> in Settings, a square that touches every open square left in a row, column or yard. A pup sits (double-tap) where its row, column or yard has no other open square, not counting free squares. Everything else needs a reason, and there are two ways to show it. Try both: the pup under the board has a switch.</p>
         <ul><li><b>A · Point at what blocks it.</b> Tap a square to cross it off. If the reason is not obvious it shows a <b>?</b> and waits. Tap the squares that block it: every open square of one row, column or yard, each of which a pup on the ? square would clash with. Hold a square to take its whole yard, or tap a tab on the fence for a whole row or column. The squares stay lit, so anything else they block takes one tap.</li>
         <li><b>A · Pup first.</b> Double-tap a square that is not yet the only spot and the pup waits there, with the squares that could still take it flashing. Light what rules those out and the pup sits. Or press <b>What if…?</b> to try the pup instead.</li>
         <li><b>What-ifs.</b> A what-if is the same board with a pup on trial: play on as usual inside it. When a row, column or yard has nowhere left, tap any square in it and the square you tried is crossed off. If instead every pup finds a seat, that is the answer (a board has only one) and they all sit for real.</li>

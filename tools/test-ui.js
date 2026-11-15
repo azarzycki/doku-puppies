@@ -75,7 +75,7 @@ await session('phone portrait', { viewport: { width: 390, height: 844 }, deviceS
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(450);
   check((await cellOf(page, pick.good)) === 0, 'tapping a pup sends it home');
   // no-guessing mode, style A: a cross that needs a reason shows "?" and waits for the squares that block it
-  await app(page, a => { a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.game.settings = a.profile.settings; a.game.syncMode(); });
+  await app(page, a => { a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'pups'; a.game.settings = a.profile.settings; a.game.syncMode(); }); // strict: every cross asks
   await page.waitForTimeout(200);
   // a square that one row, column or yard rules out (few blockers), the others it rules out, and a square nothing forces a pup onto
   const findProof = () => page.evaluate(async () => {
@@ -243,12 +243,12 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
   check(cell >= 40, '9×9 board gets a usable cell size (' + cell + 'px)');
   check(await page.$('.board-frame svg.terrain') !== null, 'terrain SVG drawn');
   // no-guessing mode end to end, once in each style: every step the hint engine takes is entered through the game
-  const solveIn = (style, stopAt = '') => page.evaluate(async ({ style, stopAt }) => {
+  const solveIn = (style, stopAt = '', free = 'pups') => page.evaluate(async ({ style, stopAt, free }) => {
     const { nextDeduction, forcedIn, rulesOut, unitHas, unitsThrough } = await import('./js/engine.js');
     const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n;
     a.closeAllDialogs();
     g.restart();
-    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = style; g.settings = a.profile.settings; g.syncMode();
+    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = style; a.profile.settings.noGuessFree = free; g.settings = a.profile.settings; g.syncMode();
     const name = u => (u.type === 'reg' ? P.hold(g.puzzle.regions.indexOf(u.idx)) : P.tab(u)); // a whole row, column or yard
     const reason = w => w.kind === 'pointing' ? [{ type: 'reg', idx: w.reg }] : w.kind === 'claiming' ? [w.line] : w.kind === 'crowd' ? [w.unit]
       : w.kind === 'subsetRegs' ? w.regs.map(r => ({ type: 'reg', idx: r })) : w.kind === 'subsetLines' ? w.lines : null;
@@ -275,11 +275,14 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
       if (w.kind === 'basic') { for (const i of step.eliminate) { P.tap(i); if (g.cells[i] !== 1) rejected = 'basic'; } }
       else if (w.kind === 'single') { if (!g.tryPlacePup(step.place[0])) rejected = 'single'; }
       else if (w.kind === 'hypo') {
+        if (P.free(P.st(), w.cell)) { P.tap(w.cell); if (g.cells[w.cell] !== 1) rejected = 'free what-if square'; continue; } // a free cross needs no what-if
         if (style === 'A') { g.tryPlacePup(w.cell); P.press('whatif'); } else P.tap(w.cell); // A: a refused pup offers the what-if; B: a tap is one
         if (P.tests.length !== 1) { rejected = 'what-if did not start'; break; }
-        for (const x of w.chain) g.tryPlacePup(x.cell);
-        if (P.top.steps.length !== w.chain.length) { rejected = 'what-if chain'; break; }
-        if (style === 'A' && flip++ % 2) name(w.unit); else P.tap(g.unitCells(w.unit).find(c => c !== w.cell)); // name the unit left with no room, or tap one of its squares
+        for (const x of w.chain) if (P.tests.length) g.tryPlacePup(x.cell); // with free crosses a what-if can end early: a forced pup on a square that is obviously out
+        if (P.tests.length) {
+          if (P.top.steps.length !== w.chain.length) { rejected = 'what-if chain'; break; }
+          if (style === 'A' && flip++ % 2) name(w.unit); else P.tap(g.unitCells(w.unit).find(c => c !== w.cell)); // name the unit left with no room, or tap one of its squares
+        } else if (free === 'pups') { rejected = 'what-if ended early'; break; }
         if (P.busy || g.cells[w.cell] !== 1) rejected = 'what-if end';
       } else {
         const us = reason(w); if (!us) { rejected = w.kind; break; }
@@ -295,9 +298,9 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
         }
       }
     }
-    a.profile.settings.noGuess = false; a.profile.settings.noGuessStyle = 'A';
+    a.profile.settings.noGuess = false; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'touch';
     return { done: g.done, hearts: g.hearts, kinds, rejected, safe };
-  }, { style, stopAt });
+  }, { style, stopAt, free });
   for (const style of ['A', 'B']) {
     const solve = await solveIn(style);
     check(solve.done && !solve.rejected && solve.hearts === 3 && solve.safe, `no-guessing ${style}: a 9×9 is solved start to finish by entering every step (` + JSON.stringify(solve) + ')');
@@ -313,7 +316,7 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
         const { rulesOut, forcedIn } = await import('./js/engine.js');
         const a = window.dokuPuppies, g = a.game, P = g.proof, cells = () => Array.from(g.cells).join('');
         a.closeAllDialogs();
-        a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; g.settings = a.profile.settings; g.syncMode();
+        a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'pups'; g.settings = a.profile.settings; g.syncMode();
         const before = cells(), st0 = P.st(); let f = null;
         for (let t = 0; t < g.N && !f; t++) { // a correct pup, so the what-if can never run into a dead end of its own
           if (!g.solution[t] || !st0.cand[t] || st0.pup[t] || forcedIn(st0, t)) continue;
@@ -380,6 +383,11 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
       check(solve.done && !solve.rejected && solve.hearts === 3 && solve.safe && solve.kinds.hypo > 0, `no-guessing ${style}: level ${id} is solved by entering every step, what-ifs included (` + JSON.stringify(solve) + ')');
       await page.waitForTimeout(900);
     }
+    if (id === 160) for (const [style, free] of [['A', 'block'], ['B', 'touch']]) { // looser free crosses still get to the end
+      const solve = await solveIn(style, '', free);
+      check(solve.done && !solve.rejected && solve.hearts === 3 && solve.safe, `no-guessing ${style}, free crosses at ${free}: level ${id} is solved (` + JSON.stringify(solve) + ')');
+      await page.waitForTimeout(900);
+    }
   }
   // a position from play (level 123, style A): a what-if on r9c9 that has run on to seven pups. The player wants a pup on
   // r3c8 "because rows 1 and 6 take columns 1 and 10 between them": pup first, then the two rows. After that the what-if
@@ -389,7 +397,7 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
   const played = await page.evaluate(() => {
     const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n, at = (r, c) => (r - 1) * n + (c - 1);
     a.closeAllDialogs();
-    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; g.settings = a.profile.settings; g.syncMode();
+    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'pups'; g.settings = a.profile.settings; g.syncMode();
     const real = { 1: [2, 3, 7, 9], 2: [2, 7, 9], 3: [2, 3, 7, 9], 4: [5, 7, 9], 5: [2, 6, 7, 9], 6: [2, 3, 4, 7, 9], 7: [2, 5, 7], 8: [2, 3, 6, 8, 10], 9: [4, 6, 8], 10: [2, 3, 4, 7, 9] };
     for (const r in real) for (const c of real[r]) { g.cells[at(Number(r), c)] = 1; g.paintCell(at(Number(r), c), false); }
     g.changed();
@@ -420,7 +428,7 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
   const five = await page.evaluate(() => {
     const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n, at = (r, c) => (r - 1) * n + (c - 1);
     a.closeAllDialogs();
-    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; g.settings = a.profile.settings; g.syncMode();
+    a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'pups'; g.settings = a.profile.settings; g.syncMode();
     const X = { 1: [4, 5, 6, 7, 8], 2: [4, 5, 6, 8], 3: [4, 10], 4: [4, 5, 9], 5: [4, 5], 6: [4], 7: [4, 5], 8: [3, 10], 9: [3, 5, 6, 7, 8], 10: [4, 5, 6, 7, 9] };
     for (const r in X) for (const c of X[r]) { g.cells[at(Number(r), c)] = 1; g.paintCell(at(Number(r), c), false); }
     g.changed();
@@ -435,6 +443,43 @@ await session('tablet landscape', { viewport: { width: 1180, height: 820 }, devi
     return res;
   });
   check(five.waits && five.fourNotEnough && five.seated && five.said === 'Seated: Column 5, column 6, column 7 and column 8 rule out every other square of column 10, so the pup sits.', 'A, from play: five whole columns can be named, and they seat the pup (' + JSON.stringify(five) + ')');
+  // free crosses (level 131 from play): r2c9 touches all four squares of the splash pool, so at the default setting
+  // ("touching") one tap crosses it with no question. Strict, it asks; at "too crowded" r1c2 is free too, because
+  // column 1 lies inside the green yard (a line lock).
+  await app(page, a => a.go('game', { kind: 'level', id: 131 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 131; });
+  const freeX = await page.evaluate(() => {
+    const a = window.dokuPuppies, g = a.game, P = g.proof, n = g.n, at = (r, c) => (r - 1) * n + (c - 1);
+    a.closeAllDialogs(); g.restart();
+    const set = (style, free) => { a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = style; a.profile.settings.noGuessFree = free; g.settings = a.profile.settings; g.syncMode(); };
+    const res = {}, r2c9 = at(2, 9), r1c2 = at(1, 2);
+    set('A', 'pups'); res.strictAsks = P.tap(r2c9) === 'asked' && g.cells[r2c9] === 0; P.backOut();
+    set('A', 'touch');
+    res.drag = P.canDrag(r2c9) === true && P.canDrag(at(2, 8)) === false;
+    res.touchFree = P.tap(r2c9) === 'crossed' && g.cells[r2c9] === 1 && !P.busy;
+    res.lineLockAsks = P.tap(r1c2) === 'asked'; P.backOut();
+    g.undo(); res.undone = g.cells[r2c9] === 0;
+    res.notHere = P.seatKey(r2c9) === false && g.cells[r2c9] === 0 && /splash pool with nowhere to go/.test(document.getElementById('basis-text').textContent);
+    set('A', 'block'); res.blockFree = P.tap(r1c2) === 'crossed' && g.cells[r1c2] === 1; g.undo();
+    set('B', 'touch'); res.bTouch = P.tap(r2c9) === 'crossed' && g.cells[r2c9] === 1 && !P.tests.length; g.undo();
+    a.profile.settings.noGuess = false; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = 'touch';
+    return res;
+  });
+  check(Object.values(freeX).every(Boolean), 'free crosses: at "touching" a square that touches all of a yard is crossed with one tap; strict asks; "too crowded" frees line locks too (' + JSON.stringify(freeX) + ')');
+  // free squares count as gone when deciding whether a pup has its only spot (level 2: r3c5's yard has only free squares besides it)
+  await app(page, a => a.go('game', { kind: 'level', id: 2 }));
+  await page.waitForFunction(() => { const g = window.dokuPuppies.game; return g && g.cellEls && g.info.id === 2; });
+  const onlyFree = await page.evaluate(() => {
+    const a = window.dokuPuppies, g = a.game, P = g.proof, i = 2 * g.n + 4;
+    a.closeAllDialogs(); g.restart();
+    const set = free => { a.profile.settings.noGuess = true; a.profile.settings.noGuessStyle = 'A'; a.profile.settings.noGuessFree = free; g.settings = a.profile.settings; g.syncMode(); };
+    const res = {};
+    set('pups'); res.strictWaits = g.tryPlacePup(i) === false && P.want === i; P.backOut();
+    set('touch'); res.touchSits = g.tryPlacePup(i) === true && g.cells[i] === 2 && g.hearts === 3;
+    a.profile.settings.noGuess = false; a.profile.settings.noGuessFree = 'touch';
+    return res;
+  });
+  check(onlyFree.strictWaits && onlyFree.touchSits, 'free crosses: a pup sits at once when every other square of its yard is free (' + JSON.stringify(onlyFree) + ')');
 });
 
 await session('TV keyboard', { viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 }, async (page) => {

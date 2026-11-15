@@ -834,6 +834,23 @@ export function forcedIn(st, i) {
 }
 /** a unit with no pup and nowhere left to put one */
 export function starved(st, u) { return !st.unitHasPup(u.type, u.idx) && st.unitCells(u.type, u.idx).length === 0; }
+/**
+ * A row, column or yard that a pup on i would leave with no open square, or null: the one-unit case of rulesOut, cheap
+ * enough to ask of every square. how = 'touch' counts only the squares next to i (the ring a pup keeps clear); 'block'
+ * counts every square a pup on i would block (its row, column and yard as well). The unit must not contain i (a pup on i
+ * would be its pup) and must not have a pup yet.
+ */
+export function crowdedBy(st, i, how = 'block') {
+  if (!st.cand[i] || st.pup[i]) return null;
+  const near = how === 'touch' ? new Set(neighbours8(st.n, i)) : null, sh = near ? null : st.shadow(i);
+  for (const type of UNIT_TYPES) for (let idx = 0; idx < st.n; idx++) {
+    const u = { type, idx };
+    if (unitHas(st, u, i) || st.unitHasPup(type, idx)) continue;
+    const cells = st.unitCells(type, idx);
+    if (cells.length && cells.every(c => (near ? near.has(c) : sh[c]))) return u;
+  }
+  return null;
+}
 
 /**
  * True when these units cannot all be given a pup: one of them is starved, or they are squeezed into too little room
